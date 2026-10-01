@@ -1,8 +1,13 @@
 # Join plugin
 
-Connects Claude and Codex to [Join](https://join.build), the platform
-owners, architects and builders use to track the cost, schedule and risks of a
-construction project as its design develops. The plugin bundles two things:
+[Join](https://join.build) aligns owners, design teams, and contractors within
+a unified system of record for preconstruction and the design phase. By
+integrating real-time cost and schedule data with design evolution, Join
+provides the decision intelligence necessary to manage risk on complex projects
+and ensure predictable project delivery at scale.
+
+This plugin connects Claude and Codex to your project- and company-level Join
+data, and produces custom reports from it. It bundles two things:
 
 - **The Join MCP server** (`https://api.join.build/mcp/join`). It lets the
   agent read and update the Join data your account can access: projects,

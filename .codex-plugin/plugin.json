@@ -1,7 +1,7 @@
 {
   "name": "join",
-  "version": "0.1.0",
-  "description": "Connects to Join (join.build), the preconstruction and design phase platform, through the Join MCP server, and adds skills for working with Join project data, such as a one-page A3 executive snapshot and a risk and contingency analysis of a project.",
+  "version": "0.1.1",
+  "description": "Join (https://join.build) aligns owners, design teams, and contractors within a unified system of record for preconstruction and the design phase. By integrating real-time cost and schedule data with design evolution, Join provides the decision intelligence necessary to manage risk on complex projects and ensure predictable project delivery at scale.\n\nThis plugin bundles the Join MCP server, which allows you to interact with your project- and company-level Join data from Codex, with skills for working with Join project data and producing custom reports.",
   "author": {
     "name": "Join",
     "url": "https://join.build"
