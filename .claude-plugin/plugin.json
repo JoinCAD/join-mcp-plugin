@@ -1,0 +1,27 @@
+{
+  "name": "join",
+  "displayName": "Join",
+  "version": "0.1.0",
+  "description": "Connects Claude to Join (join.build), the preconstruction and design phase platform, through the Join MCP server, and adds skills for working with Join project data, such as a one-page A3 executive snapshot and a risk and contingency analysis of a project.",
+  "author": {
+    "name": "Join",
+    "url": "https://join.build"
+  },
+  "homepage": "https://join.build",
+  "repository": "https://github.com/JoinCAD/join-mcp-plugin",
+  "license": "Apache-2.0",
+  "privacyPolicyUrl": "https://join.build/privacy/",
+  "termsOfServiceUrl": "https://join.build/terms-of-use/",
+  "supportUrl": "https://success.join.build",
+  "keywords": [
+    "join",
+    "construction",
+    "preconstruction",
+    "cost",
+    "estimating",
+    "budget",
+    "risk",
+    "report",
+    "contingency"
+  ]
+}

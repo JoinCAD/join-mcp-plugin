@@ -1,0 +1,51 @@
+{
+  "name": "join",
+  "version": "0.1.0",
+  "description": "Connects to Join (join.build), the preconstruction and design phase platform, through the Join MCP server, and adds skills for working with Join project data, such as a one-page A3 executive snapshot and a risk and contingency analysis of a project.",
+  "author": {
+    "name": "Join",
+    "url": "https://join.build"
+  },
+  "homepage": "https://join.build",
+  "repository": "https://github.com/JoinCAD/join-mcp-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "join",
+    "construction",
+    "preconstruction",
+    "cost",
+    "estimating",
+    "budget",
+    "risk",
+    "report",
+    "contingency"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Join",
+    "shortDescription": "Construction cost and risk",
+    "longDescription": "Work with your Join projects: look up projects, milestones, cost totals, items, risks and history, add comments and items, build a one-page A3 executive snapshot of a project, and run a risk and contingency analysis (Cost Risk Calculator waterfall and Monte Carlo range of outcomes).",
+    "developerName": "Join",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://join.build",
+    "supportURL": "https://success.join.build",
+    "privacyPolicyURL": "https://join.build/privacy/",
+    "termsOfServiceURL": "https://join.build/terms-of-use/",
+    "defaultPrompt": [
+      "Build an A3 snapshot of my Join project for the owner's executive sponsor",
+      "Is the contingency on my Join project enough to cover where it will land?",
+      "What are the biggest open cost risks on my Join project?"
+    ],
+    "logo": "./assets/join-icon.svg",
+    "logoDark": "./assets/join-icon-dark.svg",
+    "composerIcon": "./assets/join-icon.svg",
+    "composerIconDark": "./assets/join-icon-dark.svg",
+    "screenshots": []
+  }
+}

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;700&family=Red+Hat+Text:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- Join light-theme tokens (see references/join-design.md) ---------- */
+  :root {
+    --type-primary: #000; --type-muted: #9B9B9B; --type-secondary-text: #686B6C; --type-link: #4B71A9;
+    --type-error: #E11E29; --type-success: #6AAF6F; --type-warning: #F6B901;
+    --border-default: #D0D5D7; --border-separator: #E7EAEF; --border-brand: #FFCF5D; --border-total: #000;
+    --bg-primary: #FFF; --bg-1: #F6F7F9; --bg-2: #E7EAEF;
+    --entity-estimate: #000; --entity-budget: #4B71A9; --entity-markups: #157E84; --entity-owner-cost: #62AEB7;
+    --entity-milestone: #4B71A9; --entity-event: #ED6864; --entity-today: #5CD746;
+    --entity-item-pastdue: #ED6864; --entity-item-upcoming: #F6B901;
+    --entity-risk-high: #E11E29; --entity-risk-med: #F6B901; --entity-risk-low: #6AAF6F; --entity-risk-tbd: #686B6C; --entity-risk-closed: #D0D5D7;
+    --chart-pending-area: #f6b90199;
+    --status-pending: #F6B901; --status-pending-tint: #FEF8E6; --status-accepted: #6AAF6F; --status-accepted-tint: #F0F7F1;
+    --status-incorporated: #08493B; --status-incorporated-tint: #E6EDEB; --status-rejected: #E11E29; --status-rejected-tint: #FCE9EA;
+    --status-notchosen: #9B9B9B; --status-notchosen-tint: #E7EAEF;
+    --font: "Red Hat Text", "Helvetica Neue", Helvetica, sans-serif;
+    --font-display: "Red Hat Display", "Helvetica Neue", Helvetica, sans-serif;  /* titles and large numbers */
+    --page-w: 420mm; --page-h: 297mm; --pad: 10mm;
+  }
+  @page { size: A3 landscape; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-2); color: var(--type-primary); font-family: var(--font);
+               letter-spacing: 0.0119em; -webkit-font-smoothing: antialiased; }
+  a { color: var(--type-link); text-decoration: none; } a:hover { text-decoration: underline; }
+  .num, .type-number { font-variant-numeric: lining-nums tabular-nums; }
+
+  .page { width: var(--page-w); height: var(--page-h); margin: 8mm auto; padding: var(--pad); background: var(--bg-primary);
+          display: grid; grid-template-rows: auto 1fr auto; gap: 4mm; overflow: hidden; box-shadow: 2px 6px 4px 0 rgba(52,75,54,.25); }
+  @media print { html, body { background: #fff; } .page { margin: 0; box-shadow: none; } }
+
+  /* ---------- Header: Join print-header pattern + cost summary strip ---------- */
+  header { display: grid; grid-template-columns: 44mm 1fr 44mm; gap: 8mm; align-items: center; }
+  .logo { height: 14mm; display: flex; align-items: center; } .logo.right { justify-content: flex-end; }
+  .logo img { max-height: 14mm; max-width: 44mm; object-fit: contain; }
+  .logo .slot { font-size: 10px; line-height: 14px; color: var(--type-muted); border: 1px dashed var(--border-default); padding: 6px 10px; }
+  .title-block { text-align: center; }
+  .title-block h1 { margin: 0; font-family: var(--font-display); font-size: 28px; line-height: 32px; font-weight: 500; }
+  .title-block .sub { font-size: 14px; line-height: 20px; color: var(--type-secondary-text); margin-top: 2px; }
+  .title-block .sub b { color: var(--type-primary); font-weight: 500; }
+  .metrics { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin-top: 3mm;
+             border-top: 1px solid var(--border-total); border-bottom: 1px solid var(--border-default); }
+  .metric { padding: 3mm 4mm 2.5mm; border-right: 1px solid var(--border-separator); }
+  .metric:last-child { border-right: 0; }
+  .metric .label { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .metric .value { font-family: var(--font-display); font-size: 21px; line-height: 28px; font-weight: 500; font-variant-numeric: lining-nums tabular-nums; margin-top: 1px; }
+  .metric .note { font-size: 12px; line-height: 16px; color: var(--type-muted); }
+  .metric.gap .value { color: var(--type-muted); }   /* Gap is muted in the app, never red */
+
+  /* ---------- Six panels, three columns ---------- */
+  main { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 5mm 6mm; min-height: 0; }
+  section { display: flex; flex-direction: column; min-height: 0; padding-top: 1mm; border-top: 2px solid var(--border-total); }
+  .sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; padding: 1.5mm 0 2mm;
+              border-bottom: 1px solid var(--border-default); margin-bottom: 2.5mm; }
+  section h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 700; }
+  .sec-sub { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .sec-link { font-size: 12px; line-height: 16px; white-space: nowrap; }
+  .sec-body { flex: 1; min-height: 0; overflow: hidden; font-size: 14px; line-height: 20px; }
+  .sec-body p { margin: 0 0 2mm; }
+
+  /* ---------- Blocks ---------- */
+  .pos { color: var(--type-success); } .neg { color: var(--type-error); } .gap { color: var(--type-muted); }
+  .muted { color: var(--type-muted); } .secondary { color: var(--type-secondary-text); }
+  /* ---------- Cost trendline (borrowed from the app's Cost Trendline chart) ---------- */
+  .trend { width: 100%; height: auto; display: block; }
+  .trend .mesh { stroke: var(--border-default); stroke-width: 1; }
+  .trend .axis { stroke: var(--border-default); stroke-width: 2; }
+  .trend path.estimate { fill: none; stroke: var(--entity-estimate); stroke-width: 1.5; stroke-dasharray: 1.5 3; stroke-linecap: round; }
+  .trend path.running { fill: none; stroke: var(--entity-estimate); stroke-width: 2; }
+  .trend path.budget { fill: none; stroke: var(--entity-budget); stroke-width: 2; }
+  .trend .dot { fill: var(--entity-estimate); } .trend .dot.budget { fill: var(--entity-budget); stroke: none; }
+  .trend text { font-family: var(--font); font-size: 11px; fill: var(--type-primary); letter-spacing: 0.0119em;
+                paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }   /* halo, like the app's label blur */
+  .trend text.tick { fill: var(--type-secondary-text); } .trend text.budget { fill: var(--entity-budget); }
+  .trend text.xlab { fill: var(--type-secondary-text); }
+  .trend-legend { display: flex; gap: 16px; font-size: 12px; line-height: 16px; color: var(--type-secondary-text); margin-bottom: 4px; }
+  .trend-legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--entity-estimate); vertical-align: 3px; margin-right: 5px; }
+  .trend-legend i.estimate { border-top-style: dotted; } .trend-legend i.budget { border-top-color: var(--entity-budget); }
+  table.list { width: 100%; border-collapse: collapse; }
+  table.list th { text-align: left; font-size: 14px; line-height: 16px; font-weight: 700; padding: 0 8px 6px 0; border-bottom: 1px solid var(--border-default); }
+  table.list td { font-size: 14px; line-height: 16px; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border-separator); vertical-align: top; }
+  table.list tr:last-child td { border-bottom: 0; }
+  table.list tr.total td { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  table.list tr.group td { font-weight: 500; background: var(--bg-1); }
+  table.list td.num, table.list th.num { text-align: right; font-variant-numeric: lining-nums tabular-nums; }
+  /* Data rows never wrap: the first column truncates with an ellipsis (full text in the title tooltip),
+     every other column stays on one line. Fewer rows beat wrapped ones. */
+  table.list td, table.list th { white-space: nowrap; }
+  table.list th:first-child { width: 46%; }
+  table.list td:first-child { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  table.list.wrap th:first-child { width: 44%; }
+  /* wrap=True (the exception, for Top Decisions names that would otherwise truncate hard): only the name column may wrap, to at most two lines */
+  table.list.wrap td:first-child { white-space: normal; max-width: none; }
+  table.list.wrap td:first-child > * { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pastdue { color: var(--entity-item-pastdue); }   /* Join's item-pastdue coral, as in the Items list */
+  .chip { display: inline-block; font-size: 12px; line-height: 16px; padding: 0 6px; border-radius: 2px; vertical-align: middle; white-space: nowrap; }
+  .chip.pending { color: #8a6800; background: var(--status-pending-tint); }
+  .chip.accepted { color: var(--status-accepted); background: var(--status-accepted-tint); }
+  .chip.incorporated { color: var(--status-incorporated); background: var(--status-incorporated-tint); }
+  .chip.rejected { color: var(--status-rejected); background: var(--status-rejected-tint); }
+  .chip.notchosen, .chip.notapplicable, .chip.closed { color: var(--type-secondary-text); background: var(--status-notchosen-tint); }
+  .chip.open { color: #a54b0a; background: #FFF1D7; }
+  .chip.high { color: #fff; background: var(--entity-risk-high); } .chip.medium { color: #000; background: var(--entity-risk-med); } .chip.low { color: #fff; background: var(--entity-risk-low); }
+  .chip.pastdue { color: #fff; background: var(--entity-item-pastdue); }
+  .bars { display: grid; gap: 7px; }
+  .bar-row { display: grid; grid-template-columns: 36% 1fr 20%; align-items: center; gap: 8px; font-size: 14px; line-height: 16px; }
+  .bar-row .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .track { height: 12px; background: var(--bg-1); position: relative; }
+  .bar-row .fill { height: 100%; background: var(--entity-estimate); }
+  .bar-row .fill.budget { background: none; border-right: 2px solid var(--entity-budget); position: absolute; top: -2px; height: 16px; left: 0; }
+  .bar-row .fill.markups { background: var(--entity-markups); } .bar-row .fill.owner { background: var(--entity-owner-cost); }
+  .legend { display: flex; gap: 12px; font-size: 12px; line-height: 16px; color: var(--type-secondary-text); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 4px; background: var(--entity-estimate); }
+  .legend i.budget { background: none; border-right: 2px solid var(--entity-budget); width: 4px; }
+  .legend i.markups { background: var(--entity-markups); } .legend i.owner { background: var(--entity-owner-cost); }
+  /* one shared grid so dates align: the date column sizes to its longest value and never wraps; names truncate instead */
+  .timeline { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 10px; row-gap: 6px; font-size: 14px; line-height: 18px; align-items: baseline; }
+  .tl-row { display: contents; }
+  .tl-row .date { color: var(--type-secondary-text); font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+  .tl-row .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-row.item .date::before { background: var(--entity-item-upcoming); }   /* item created / updated / status change */
+  .tl-row.risk .date::before { background: var(--entity-risk-tbd); }        /* risk register change */
+  .tl-row .date::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--border-default); vertical-align: 0; }
+  .tl-row.milestone .date::before { background: var(--entity-milestone); border-radius: 1px; transform: rotate(45deg); }
+  .tl-row.event .date::before { background: var(--entity-event); }
+  .tl-row.today .date::before { background: var(--entity-today); }
+  .tl-row.today { font-weight: 500; }
+  .tl-row.past { color: var(--type-secondary-text); }
+  .story { font-size: 14px; line-height: 24px; }
+  .figure { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; }
+  .figure img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .figure figcaption { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); margin-top: 6px; text-align: center; }
+  .matrix { display: grid; grid-template-columns: 14px repeat(5, 1fr); gap: 3px; font-size: 12px; line-height: 16px; margin-bottom: 8px; }
+  .matrix .cell { height: 18px; display: flex; align-items: center; justify-content: center; font-weight: 500; background: var(--bg-1); }
+  .matrix .cell.low { background: #F0F7F1; } .matrix .cell.medium { background: #FEF8E6; } .matrix .cell.high { background: #FCE9EA; }
+  .matrix .axis { color: var(--type-muted); font-size: 10px; display: flex; align-items: center; justify-content: center; }
+  .empty { color: var(--type-muted); font-style: italic; }
+  .buildup { display: grid; gap: 4px; font-size: 14px; line-height: 20px; }
+  .buildup .row { display: grid; grid-template-columns: 1fr auto; padding: 4px 0; border-bottom: 1px solid var(--border-separator); }
+  .buildup .row.total { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  .buildup .row.sub { color: var(--type-secondary-text); padding-left: 12px; }
+
+  /* ---------- Footer ---------- */
+  footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6mm; border-top: 1px solid var(--border-default);
+           padding-top: 2mm; font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  footer .join-logo { display: flex; align-items: center; justify-content: center; }
+  footer .join-logo img { height: 6mm; }
+  /* Join's own mark (komodo-ui JoinLogo.tsx: slash + "join"), inline so it prints crisp and takes the text color */
+  footer .join-logo .join-mark { height: 9mm; width: auto; fill: var(--type-primary); display: block; }
+  footer .right { text-align: right; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="logo left">{{OWNER_LOGO}}</div>
+    <div class="title-block">
+      <h1>{{PROJECT_NAME}}</h1>
+      <div class="sub">{{SUBTITLE}}</div>
+    </div>
+    <div class="logo right">{{PREPARER_LOGO}}</div>
+    <div class="metrics">{{METRICS}}</div>
+  </header>
+
+  <main>{{SECTIONS}}</main>
+
+  <footer>
+    <div class="left">{{CREATED}}</div>
+    <div class="join-logo"><!--JOIN_LOGO_START--><svg class="join-mark" viewBox="0 0 38 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Join"><path d="M17.6526 29.2959C17.6526 30.3914 17.3709 31.2051 16.7762 31.7998C16.1815 32.3632 15.3678 32.6762 14.3662 32.6762C13.8028 32.6762 13.302 32.5823 12.8951 32.4258C12.4883 32.238 12.1127 32.0189 11.8623 31.7059C11.5806 31.3929 11.3615 31.0487 11.2363 30.6418C11.1111 30.2349 11.0172 29.7967 11.0172 29.3272H13.1142C13.1142 29.7654 13.2081 30.141 13.4272 30.454C13.615 30.7357 13.928 30.8922 14.3662 30.8922C14.7418 30.8922 15.0548 30.767 15.2739 30.4853C15.493 30.2036 15.5869 29.828 15.5869 29.3585V23.3491H17.6839V29.2959H17.6526Z"/><path d="M22.3161 32.6134C21.7841 32.6134 21.2833 32.5195 20.8451 32.3317C20.4069 32.1439 20.0626 31.9248 19.7496 31.6118C19.4366 31.2988 19.2176 30.9546 19.0611 30.579C18.9046 30.1721 18.8107 29.7652 18.8107 29.2957C18.8107 28.8262 18.9046 28.4193 19.0611 28.0125C19.2176 27.6056 19.4366 27.2613 19.7496 26.9796C20.0626 26.6979 20.4069 26.4475 20.8451 26.2597C21.2833 26.0719 21.7528 25.978 22.3161 25.978C22.8482 25.978 23.349 26.0719 23.7872 26.2597C24.2254 26.4475 24.5697 26.6666 24.8827 26.9796C25.1956 27.2926 25.4147 27.6369 25.5712 28.0125C25.7277 28.4193 25.7903 28.8262 25.7903 29.2957C25.7903 29.7652 25.7277 30.1721 25.5712 30.579C25.4147 30.9859 25.1956 31.3301 24.8827 31.6118C24.5697 31.9248 24.2254 32.1439 23.7872 32.3317C23.349 32.5195 22.8482 32.6134 22.3161 32.6134ZM22.2848 30.9233C22.5039 30.9233 22.723 30.892 22.9108 30.7981C23.0986 30.7042 23.2551 30.6103 23.3803 30.4538C23.5055 30.2973 23.5994 30.1408 23.6933 29.953C23.7872 29.7652 23.8185 29.5461 23.8185 29.327C23.8185 29.1079 23.7872 28.8888 23.6933 28.701C23.5994 28.5132 23.5055 28.3254 23.3803 28.2002C23.2551 28.0751 23.0986 27.9499 22.9108 27.856C22.723 27.7621 22.5039 27.7308 22.2848 27.7308C22.0658 27.7308 21.8467 27.7621 21.6589 27.856C21.4711 27.9499 21.3146 28.0438 21.1894 28.2002C21.0642 28.3567 20.9703 28.5132 20.8764 28.701C20.7825 28.8888 20.7825 29.1079 20.7825 29.327C20.7825 29.5461 20.8138 29.7652 20.8764 29.953C20.939 30.1408 21.0329 30.3286 21.1894 30.4538C21.3459 30.579 21.4711 30.7042 21.6589 30.7981C21.878 30.8607 22.0658 30.9233 22.2848 30.9233Z"/><path d="M26.7606 24.1001C26.7606 23.7559 26.8858 23.4429 27.1362 23.1925C27.3866 22.9421 27.6683 22.8169 28.0439 22.8169C28.2317 22.8169 28.3882 22.8482 28.5447 22.9108C28.7011 22.9734 28.8263 23.0673 28.9515 23.1925C29.0767 23.3177 29.1706 23.4429 29.2332 23.5994C29.2958 23.7559 29.3271 23.9124 29.3271 24.1001C29.3271 24.2879 29.2958 24.4444 29.2332 24.6009C29.1706 24.7574 29.0767 24.8826 28.9515 25.0078C28.8263 25.133 28.7011 25.2269 28.5447 25.2895C28.3882 25.3521 28.2317 25.3834 28.0439 25.3834C27.8561 25.3834 27.6996 25.3521 27.5431 25.2895C27.3866 25.2269 27.2614 25.133 27.1362 25.0078C27.011 24.8826 26.9171 24.7574 26.8545 24.6009C26.7919 24.4444 26.7606 24.2566 26.7606 24.1001ZM27.0423 26.1659H29.0454V32.457H27.0423V26.1659Z"/><path d="M30.7668 26.166H32.77V27.0737C32.9578 26.7294 33.2081 26.479 33.5524 26.2912C33.8967 26.1034 34.3349 26.0095 34.8357 26.0095C35.2739 26.0095 35.6182 26.0721 35.8999 26.1973C36.1815 26.3225 36.4006 26.5103 36.5884 26.6981C36.7762 26.9485 36.9327 27.2302 36.9953 27.5432C37.0579 27.8562 37.0892 28.2317 37.0892 28.7012V32.4258H35.0861V29.2333C35.0861 28.7951 34.9922 28.4195 34.8357 28.1378C34.6792 27.8562 34.3975 27.6997 33.9906 27.6997C33.5837 27.6997 33.2707 27.8562 33.0517 28.1378C32.8326 28.4195 32.7387 28.7951 32.7387 29.2959V32.4571H30.7355V26.166H30.7668Z"/><path d="M7.35524 32.6761L0 40V7.32394L7.35524 0V32.6761Z"/></svg><!--JOIN_LOGO_END--></div>
+    <div class="right">{{FOOTER_RIGHT}}</div>
+  </footer>
+</div>
+</body>
+</html>

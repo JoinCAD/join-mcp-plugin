@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;700&family=Red+Hat+Text:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- Join light-theme tokens (see references/join-design.md) ---------- */
+  :root {
+    --type-primary: #000; --type-muted: #9B9B9B; --type-secondary-text: #686B6C; --type-link: #4B71A9;
+    --type-error: #E11E29; --type-success: #6AAF6F; --type-warning: #F6B901;
+    --border-default: #D0D5D7; --border-separator: #E7EAEF; --border-brand: #FFCF5D; --border-total: #000;
+    --bg-primary: #FFF; --bg-1: #F6F7F9; --bg-2: #E7EAEF;
+    --entity-estimate: #000; --entity-budget: #4B71A9; --entity-item-upcoming: #F6B901; --entity-risk-open: #F49144;
+    --entity-risk-high: #E11E29; --entity-risk-med: #F6B901; --entity-risk-low: #6AAF6F;
+    --status-pending: #F6B901; --status-pending-tint: #FEF8E6; --status-accepted: #6AAF6F; --status-accepted-tint: #F0F7F1;
+    --status-rejected: #E11E29; --status-rejected-tint: #FCE9EA; --status-notchosen: #9B9B9B; --status-notchosen-tint: #E7EAEF;
+    --font: "Red Hat Text", "Helvetica Neue", Helvetica, sans-serif;
+    --font-display: "Red Hat Display", "Helvetica Neue", Helvetica, sans-serif;  /* titles and large numbers */
+    --page-w: 279.4mm; --page-h: 215.9mm; --pad: 8mm;
+  }
+  @page { size: Letter landscape; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-2); color: var(--type-primary); font-family: var(--font);
+               letter-spacing: 0.0119em; -webkit-font-smoothing: antialiased; }
+  a { color: var(--type-link); text-decoration: none; } a:hover { text-decoration: underline; }
+  .num { font-variant-numeric: lining-nums tabular-nums; }
+
+  .page { width: var(--page-w); height: var(--page-h); margin: 6mm auto; padding: var(--pad); background: var(--bg-primary);
+          display: grid; grid-template-rows: auto 1fr auto; gap: 3.5mm; overflow: hidden; box-shadow: 2px 6px 4px 0 rgba(52,75,54,.25);
+          page-break-after: always; break-after: page; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  @media print { html, body { background: #fff; } .page { margin: 0; box-shadow: none; } }
+
+  /* ---------- Page header (Join print-report pattern: project over milestone · report) ---------- */
+  header { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 6mm; border-bottom: 1px solid var(--border-total); padding-bottom: 2.5mm; }
+  header h1 { margin: 0; font-family: var(--font-display); font-size: 21px; line-height: 28px; font-weight: 500; }
+  header h1 a { color: inherit; }
+  header .sub { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); margin-top: 1px; }
+  header .sub b { color: var(--type-primary); font-weight: 500; }
+  header .report-name { text-align: right; }
+  header .report-name .name { font-size: 16px; line-height: 24px; font-weight: 700; }
+  header .report-name .section { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+
+  /* ---------- Body ---------- */
+  main { min-height: 0; display: flex; flex-direction: column; gap: 3.5mm; }
+  h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 700; }
+  h3 { margin: 0 0 1.5mm; font-size: 14px; line-height: 20px; font-weight: 700; }
+  .sec-sub { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 3mm; padding-bottom: 1.5mm; border-bottom: 1px solid var(--border-default); }
+  .sec-link { font-size: 12px; line-height: 16px; white-space: nowrap; }
+  p { margin: 0; font-size: 12px; line-height: 16px; }
+  .muted { color: var(--type-muted); } .secondary { color: var(--type-secondary-text); }
+  .pos { color: var(--type-success); } .neg { color: var(--type-error); }
+
+  /* metrics strip, as the A3 / app cost summary */
+  .metrics { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-top: 1px solid var(--border-total); border-bottom: 1px solid var(--border-default); }
+  .metric { padding: 1.5mm 3mm 1mm; border-right: 1px solid var(--border-separator); min-width: 0; }
+  .metric:last-child { border-right: 0; }
+  .metric .label { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .metric .value { font-family: var(--font-display); font-size: 21px; line-height: 28px; font-weight: 500; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+  .metric .note { font-size: 12px; line-height: 16px; color: var(--type-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .metric.gap .value { color: var(--type-muted); }   /* Gap / headroom are muted like the app, never red */
+
+  /* two- and three-column bodies */
+  .cols { display: grid; gap: 6mm; min-height: 0; flex: 1; }
+  .cols.two { grid-template-columns: 1fr 1fr; } .cols.three { grid-template-columns: 1fr 1fr 1fr; }
+  .cols.assumptions { gap: 3mm 6mm; }
+  .cols.assumptions .span2 { grid-column: span 2; } .cols.assumptions .span3 { grid-column: 1 / -1; }
+  .cols.assumptions .block { min-height: auto; }   /* rows size to content; the checker reports overflow instead of silently clipping */
+  .cols.three.assumptions { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto; align-content: start; }
+  h4 { margin: 0 0 1mm; font-size: 12px; line-height: 16px; font-weight: 700; }
+  /* the vertical walk on page 2 */
+  table.walk { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.walk td { padding: 5px 0; border-bottom: 1px solid var(--border-separator); vertical-align: baseline; font-size: 12px; line-height: 16px; }
+  table.walk td.op { width: 16px; color: var(--type-secondary-text); font-size: 14px; }
+  table.walk td.val { text-align: right; font-size: 14px; font-weight: 500; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; padding-left: 8px; }
+  table.walk td .sub { color: var(--type-secondary-text); }
+  table.walk tr.total td { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  table.walk tr.total td.val { font-size: 16px; }
+  .verdict { margin-top: 2.5mm; padding: 2.5mm 3mm; background: var(--bg-1); border-left: 3px solid var(--border-brand); font-size: 13px; line-height: 18px; font-weight: 500; }
+  .kv.wide { grid-template-columns: auto 1fr auto 1fr; column-gap: 6mm; }
+  .kv.wide > div:nth-child(even) { text-align: left; padding-left: 0; }
+  .kv.wide > div:nth-child(4n+1), .kv.wide > div:nth-child(4n+2) { }
+  .kv.wide > div:nth-child(odd) { color: var(--type-secondary-text); white-space: nowrap; padding-right: 4mm; }
+  .cols.chart { grid-template-columns: minmax(0, 1fr) 84mm; }
+  .cols.mc { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 3.5mm; }
+  .block { min-height: 0; }
+  .fill { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; }
+  .fill > svg.chart { width: 100%; height: 100%; }
+
+  /* tables, Join Items-list style: single-line rows, names truncate */
+  table.list { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.list th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 700; padding: 0 6px 4px 0; border-bottom: 1px solid var(--border-default); white-space: nowrap; }
+  table.list td { font-size: 12px; line-height: 16px; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border-separator); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  table.list tr:last-child td { border-bottom: 0; }
+  table.list tr.total td { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  table.list tr.selected td { font-weight: 700; }
+  table.list td.num, table.list th.num { text-align: right; font-variant-numeric: lining-nums tabular-nums; }
+  table.list td.name { }
+  .chip { display: inline-block; font-size: 12px; line-height: 16px; padding: 0 6px; border-radius: 2px; vertical-align: middle; white-space: nowrap; }
+  .chip.accepted { color: var(--status-accepted); background: var(--status-accepted-tint); }
+  .chip.rejected { color: var(--status-rejected); background: var(--status-rejected-tint); }
+  .chip.pending { color: #8a6800; background: var(--status-pending-tint); }
+  .chip.certain { color: #a54b0a; background: #FFF1D7; }
+  .chip.excluded, .chip.assumed, .chip.override { color: var(--type-secondary-text); background: var(--status-notchosen-tint); }
+  .chip.override { color: var(--type-primary); }
+  .chip.high { color: #fff; background: var(--entity-risk-high); } .chip.medium { color: #000; background: var(--entity-risk-med); } .chip.low { color: #fff; background: var(--entity-risk-low); }
+
+  /* key/value lists for assumptions */
+  .kv { display: grid; grid-template-columns: 1fr auto; font-size: 12px; line-height: 16px; }
+  .kv > div { padding: 2px 0; border-bottom: 1px solid var(--border-separator); min-width: 0; }
+  .kv > div:nth-child(odd) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kv > div:nth-child(even) { text-align: right; font-variant-numeric: lining-nums tabular-nums; padding-left: 8px; }
+  .kv > div.total { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  .empty { color: var(--type-muted); font-style: italic; }
+
+  /* charts */
+  svg.chart { width: 100%; height: auto; display: block; font-family: var(--font); letter-spacing: 0.0119em; }
+  svg.chart text { font-family: var(--font); }
+  .chart-caption { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .legend i { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; margin-right: 5px; }
+  .legend i.line { width: 16px; height: 0; border-top: 1px dashed var(--type-primary); vertical-align: 3px; }
+  .legend i.line.budget { border-top-color: var(--entity-budget); }
+  .legend i.line.dotted { border-top-style: dotted; }
+  .findings { display: grid; gap: 2mm; }
+  .finding { display: grid; grid-template-columns: auto 1fr; gap: 3mm; align-items: baseline; padding: 1.5mm 0; border-bottom: 1px solid var(--border-separator); }
+  .finding .value { font-family: var(--font-display); font-size: 18px; line-height: 24px; font-weight: 500; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+  .finding .value.gap { color: var(--type-muted); }
+  .finding .text { font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  .finding .text b { color: var(--type-primary); font-weight: 500; }
+
+  /* ---------- Footer ---------- */
+  footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6mm; border-top: 1px solid var(--border-default);
+           padding-top: 1.5mm; font-size: 12px; line-height: 16px; color: var(--type-secondary-text); }
+  footer .join-logo { display: flex; align-items: center; justify-content: center; }
+  footer .join-logo .join-mark { height: 7mm; width: auto; fill: var(--type-primary); display: block; }
+  footer .right { text-align: right; }
+</style>
+</head>
+<body>
+{{PAGES}}
+</body>
+</html>
