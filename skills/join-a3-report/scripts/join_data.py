@@ -3,20 +3,98 @@
     import sys; sys.path.insert(0, "<skill>/scripts")
     from join_data import *
 
-Units (see references/data-gathering.md): list/cost tools return money as
-STRINGS OF US CENTS; the detailed milestone report resource returns FLOAT
-DOLLARS. Everything in this module works in dollars once loaded.
+Units (see references/data-gathering.md): every connector tool returns money
+in WHOLE CURRENCY UNITS — the list/cost tools as decimal strings
+("33554413.16", "-39336.84"), the detailed milestone report resource as plain
+numbers. Nothing is in cents. `amount()` parses either; `money()` formats in
+the project's currency once `configure(project)` has been called.
 
-Terminology follows Join (references/join-design.md): Estimate, Budget,
-Accepted Changes, Running Total, Pending Adds / Deducts, Potential Range,
-Gap (= Budget − Running Total, negative when over), Cost of Construction,
-Owner Costs, Project Total, Cost Impact, Schedule Impact, Past Due.
+Terminology: a project can rename its cost concepts (Estimate → "Baseline
+Estimate", Budget → "Target Budget", …) and Join shows the renamed labels
+everywhere in that project. `terminology-for-project` returns the labels;
+pass its result to `configure(project, terms)` and every label this module
+renders comes out in the project's own words. `T("TARGET")` gives the label
+for a concept when you author text yourself. The concepts without a
+terminology entry keep Join's defaults: Accepted Changes, Pending Adds /
+Deducts, Potential Range, Owner Costs, Cost Impact, Schedule Impact, Past Due.
+
+Start every author script with:
+
+    project = project_record(load("work/project.json"), PROJECT_ID)
+    configure(project, load("work/terms.json"))     # currency + terminology
 """
 import json
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# ---------------------------------------------------------------- terminology
+# Concept keys and default labels exactly as terminology-for-project returns them.
+
+DEFAULT_TERMS = {
+    "ESTIMATE": "Estimate",                       # the milestone's baseline estimate; items are changes relative to it
+    "TARGET": "Budget",                           # the target budget
+    "DELTA": "Delta",                             # Budget − Estimate
+    "RUNNING_TOTAL": "Running Total",             # Estimate + accepted items
+    "GAP": "Gap",                                 # Budget − Running Total
+    "DIRECT_COST": "Direct Costs",
+    "MARKUP": "Markups",
+    "COST_OF_CONSTRUCTION": "Cost of Construction",   # everything except Owner Costs
+    "PROJECT_TOTAL": "Project Total",             # everything including Owner Costs
+    "PROJECT_RUNNING_TOTAL": "Project Running Total",
+}
+TERMS = dict(DEFAULT_TERMS)
+
+
+def set_terms(terms):
+    """Install a project's terminology. Accepts the terminology-for-project
+    result ({"terms": {...}}), a bare {concept: label} dict, a path to a saved
+    result, or None (defaults). Unknown or blank labels fall back to the default."""
+    global TERMS
+    if terms is None:
+        TERMS = dict(DEFAULT_TERMS)
+        return TERMS
+    if isinstance(terms, (str, Path)):
+        terms = load(terms)
+    t = terms.get("terms", terms) if isinstance(terms, dict) else {}
+    TERMS = {k: (str(t.get(k) or "").strip() or v) for k, v in DEFAULT_TERMS.items()}
+    return TERMS
+
+
+def T(concept):
+    """The project's label for a cost concept: T("TARGET") → 'Budget' or
+    'Target Budget'. Use it wherever you write one of these words yourself
+    (subtitles, notes, the delivery message)."""
+    return TERMS.get(concept) or DEFAULT_TERMS[concept]
+
+
+def renamed_terms():
+    """{concept: (default, project label)} for every concept the project renamed."""
+    return {k: (DEFAULT_TERMS[k], TERMS[k]) for k in DEFAULT_TERMS if TERMS[k] != DEFAULT_TERMS[k]}
+
+
+def terminology_note():
+    """One sentence for the delivery message, or '' when the project uses
+    Join's default labels: 'This project calls the Estimate "Baseline Estimate"
+    and the Budget "Target Budget"; the sheet uses those labels.'"""
+    r = renamed_terms()
+    if not r:
+        return ""
+    parts = [f'the {d} "{p}"' for d, p in r.values()]
+    body = ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1]
+    return f"This project calls {body}; the sheet uses those labels."
+
+
+def configure(project=None, terms=None, currency=None):
+    """One call at the top of an author script: sets the currency from the
+    project record (`currency`: USD, GBP, …) and the terminology from the
+    saved terminology-for-project result. Returns (currency code, TERMS)."""
+    code = currency or (project or {}).get("currency")
+    if code:
+        set_currency(code)
+    set_terms(terms)
+    return CURRENCY["code"], TERMS
 
 # --------------------------------------------------------------------- loading
 
@@ -47,33 +125,74 @@ def load_glob(pattern, key):
     """load_glob('work/items-*.json', 'items') — concatenates every page."""
     return load_pages(*sorted(Path().glob(pattern)), key=key)
 
-# ----------------------------------------------------------------------- money
 
-def money(dollars, signed=False):
-    """$1.2B / $209.8M / $531K / $2,013. Negative shown with a true minus."""
-    if dollars is None:
+def project_record(d, project_id=None):
+    """The one project record from a saved list-my-projects / search-projects
+    page (`projects[]`, matched on id when given) or an already-bare record."""
+    if isinstance(d, dict) and "projects" in d:
+        ps = d["projects"]
+        return next((p for p in ps if p["id"] == project_id), ps[0] if ps else {}) if ps else {}
+    return d or {}
+
+# ----------------------------------------------------------------------- money
+# The connector returns money in whole currency units: decimal strings from
+# the list/cost tools ("33554413.16"), plain numbers from the milestone report
+# resource. Nothing is divided by 100 anywhere in this module.
+
+CURRENCY_SYMBOLS = {"USD": "$", "CAD": "CA$", "AUD": "A$", "NZD": "NZ$", "SGD": "S$", "HKD": "HK$", "MXN": "MX$",
+                    "GBP": "£", "EUR": "€", "JPY": "¥", "CNY": "¥", "INR": "₹", "KRW": "₩", "ILS": "₪", "PHP": "₱",
+                    "CHF": "CHF ", "SEK": "kr ", "NOK": "kr ", "DKK": "kr ", "ZAR": "R", "BRL": "R$", "AED": "AED ", "SAR": "SAR "}
+CURRENCY = {"code": "USD", "symbol": "$"}
+
+
+def set_currency(code):
+    """Format money in the project's currency (project record `currency`,
+    also on get-contingency-report). Unknown codes print as 'CODE 1.2M'."""
+    code = (code or "USD").upper()
+    CURRENCY["code"] = code
+    CURRENCY["symbol"] = CURRENCY_SYMBOLS.get(code, code + " ")
+    return CURRENCY
+
+
+def amount(x):
+    """Connector money → float in whole units: '33554413.16' → 33554413.16,
+    -39336.84 → -39336.84, None / '' → 0.0."""
+    if x in (None, ""):
+        return 0.0
+    return float(x)
+
+
+def money(value, signed=False):
+    """$1.2B / $209.8M / $531K / $2,013 (or £, €, … per set_currency).
+    Negative shown with a true minus."""
+    if value is None:
         return "—"
-    neg = dollars < 0
-    a = abs(dollars)
+    sym = CURRENCY["symbol"]
+    neg = value < 0
+    a = abs(value)
     if a >= 1e9:
-        s = f"${a/1e9:.2f}B".replace(".00B", "B")
+        s = f"{sym}{a/1e9:.2f}B".replace(".00B", "B")
     elif a >= 1e6:
-        s = f"${a/1e6:.1f}M"
+        s = f"{sym}{a/1e6:.1f}M"
     elif a >= 1e4:
-        s = f"${a/1e3:.0f}K"
+        s = f"{sym}{a/1e3:.0f}K"
     else:
-        s = f"${a:,.0f}"
+        s = f"{sym}{a:,.0f}"
     if neg:
         return "−" + s
-    return ("+" + s) if signed and dollars > 0 else s
+    return ("+" + s) if signed and value > 0 else s
 
 
-def money_cents(cents, signed=False):
-    return money(int(cents) / 100, signed) if cents is not None else "—"
+def money_str(x, signed=False):
+    """money() straight from a connector string: money_str('2000000.00') → $2.0M; None → —."""
+    return money(amount(x), signed) if x not in (None, "") else "—"
 
 
-def cents(x):
-    return int(x) / 100 if x is not None else 0.0
+# Legacy names from when the connector returned cents. They now parse whole
+# units like amount()/money_str() — nothing is divided — so an older author
+# script keeps producing correct figures.
+cents = amount
+money_cents = money_str
 
 
 def pct(part, whole):
@@ -137,7 +256,7 @@ def row_total(r):
 # ---------------------------------------------------------- cost summary
 
 def cost_summary(costs, project, report, items=None):
-    """Join's cost summary, all-in (Project Total basis) in dollars.
+    """Join's cost summary, all-in (Project Total basis), in the project's currency.
 
     costs   = project-costs result (active milestone, includes Owner Costs line)
     project = record from list-my-projects (budget/estimate = Cost of Construction)
@@ -147,11 +266,11 @@ def cost_summary(costs, project, report, items=None):
     items   = items_catalog() output; if omitted, pending figures come from
               the report's ITEM rows
     """
-    bd = {b["name"]: cents(b["cost"]) for b in costs["breakdown"]}
-    coc = bd.get("DirectCostsAndAllocatedMarkups", cents(costs["total"]))
+    bd = {b["name"]: amount(b["cost"]) for b in costs["breakdown"]}
+    coc = bd.get("DirectCostsAndAllocatedMarkups", amount(costs["total"]))
     owner = bd.get("OwnerCosts", 0.0)
-    project_total = cents(costs["total"])                       # Estimate, all-in
-    budget_coc = cents(project.get("budget") or 0)
+    project_total = amount(costs["total"])                      # Estimate, all-in
+    budget_coc = amount(project.get("budget") or 0)
     budget_rows = sum(row_total(r) for r in report_rows(report, "MILESTONE_BUDGET"))
     budget = budget_rows if budget_rows else budget_coc          # all-in when owner-cost budget lines exist
     it = items if items is not None else item_rows(report)
@@ -190,14 +309,16 @@ def accepted_changes(items):
 
 def header_metrics(cs, risks=None, next_event=None):
     """The default header strip: Running Total · Budget · Gap · Pending Deducts ·
-    Pending Adds · Risk Cost Impact (if any) · Next milestone/event (if any)."""
+    Pending Adds · Risk Cost Impact (if any) · Next milestone/event (if any),
+    labelled in the project's terminology (Project Running Total, Budget, Gap,
+    Estimate and Cost of Construction come from T())."""
     m = [
-        {"label": "Project Running Total", "value": money(cs["running_total"]),
-         "note": "Estimate + Accepted Changes" + (", incl. Owner Costs" if cs["has_owner_costs"] else "")},
-        {"label": "Budget", "value": money(cs["budget"]) if cs["budget"] else "No Budget",
-         "note": "incl. Owner Costs" if cs["budget_is_all_in"] else ("Cost of Construction" if cs["has_owner_costs"] else "")},
-        {"label": "Gap", "value": money(cs["gap"], signed=True) if cs["gap"] is not None else "—", "tone": gap_class(cs["gap"]),
-         "note": ("Budget − Running Total" if cs["gap"] is not None else "")},
+        {"label": T("PROJECT_RUNNING_TOTAL"), "value": money(cs["running_total"]),
+         "note": f"{T('ESTIMATE')} + Accepted Changes" + (", incl. Owner Costs" if cs["has_owner_costs"] else "")},
+        {"label": T("TARGET"), "value": money(cs["budget"]) if cs["budget"] else f"No {T('TARGET')}",
+         "note": "incl. Owner Costs" if cs["budget_is_all_in"] else (T("COST_OF_CONSTRUCTION") if cs["has_owner_costs"] else "")},
+        {"label": T("GAP"), "value": money(cs["gap"], signed=True) if cs["gap"] is not None else "—", "tone": gap_class(cs["gap"]),
+         "note": (f"{T('TARGET')} − {T('RUNNING_TOTAL')}" if cs["gap"] is not None else "")},
         {"label": "Pending Deducts", "value": money(cs["pending_deducts"], signed=True), "note": f"{cs['pending_count']} pending items"},
         {"label": "Pending Adds", "value": money(cs["pending_adds"], signed=True),
          "note": f"Potential Range {money(cs['potential_low'])} – {money(cs['potential_high'])}"},
@@ -205,8 +326,8 @@ def header_metrics(cs, risks=None, next_event=None):
     if risks:
         rs = open_risks(risks)
         if rs:
-            exp = risk_exposure_cents(risks)
-            m.append({"label": "Open Risks", "value": str(len(rs)), "note": f"Cost Impact {money_cents(exp)}" if exp else "Cost Impact not set"})
+            exp = risk_cost_impact_total(risks)
+            m.append({"label": "Open Risks", "value": str(len(rs)), "note": f"Cost Impact {money(exp)}" if exp else "Cost Impact not set"})
     if next_event:
         m.append({"label": "Next " + ("Milestone" if next_event.get("milestoneID") else "Event"),
                   "value": fmt_date(next_event["startDate"]), "note": next_event["name"]})
@@ -347,8 +468,9 @@ def pick_breakdown_axis(categorizations, item_details, est_rows, min_coverage=0.
 
 
 def breakdown_table(pairs, budget=None, cs=None):
-    """Join's milestone-summary columns per category: Estimate · Budget · Delta,
-    alphanumeric, with a Project Total row; when cs is given, the buildup rows
+    """Join's milestone-summary columns per category: Estimate · Budget · Delta
+    (headers in the project's terminology), alphanumeric, with a Project Total
+    row; when cs is given, the buildup rows
     (Accepted Changes, Project Running Total, Owner Costs) follow so a short
     category list still fills the panel."""
     rows, classes = [], []
@@ -362,19 +484,20 @@ def breakdown_table(pairs, budget=None, cs=None):
         if cs["has_owner_costs"]:
             rows.append(["Owner Costs", money(cs["owner_costs"]), "", ""]); classes.append("")
         bt = cs["budget"] if cs["budget"] else None
-        rows.append(["Project Total (Estimate)", money(cs["estimate"]), money(bt) if bt else "—",
+        rows.append([f"{T('PROJECT_TOTAL')} ({T('ESTIMATE')})", money(cs["estimate"]), money(bt) if bt else "—",
                      f'<span class="{gap_class(bt - cs["estimate"])}">{money(bt - cs["estimate"], signed=True)}</span>' if bt else "—"]); classes.append("total")
         rows.append(["Accepted Changes", money(cs["accepted_changes"], signed=True), "", ""]); classes.append("")
-        rows.append(["Project Running Total", money(cs["running_total"]), money(bt) if bt else "—",
+        rows.append([T("PROJECT_RUNNING_TOTAL"), money(cs["running_total"]), money(bt) if bt else "—",
                      f'<span class="{gap_class(cs["gap"])}">{money(cs["gap"], signed=True)}</span>' if cs["gap"] is not None else "—"]); classes.append("total")
-    return table(["Category", "Estimate", "Budget", "Delta"], rows, num_cols=(1, 2, 3), row_classes=classes)
+    return table(["Category", T("ESTIMATE"), T("TARGET"), T("DELTA")], rows, num_cols=(1, 2, 3), row_classes=classes)
 
 
 def buildup(cs, report_separated=None):
     """Cost buildup rows for when a breakdown won't fit: Direct Costs / Markups /
-    Cost of Construction / Owner Costs / Project Total. Pass a report fetched with
-    markupMode SEPARATED_MARKUPS to split direct costs from markups; otherwise
-    only Cost of Construction / Owner Costs / Project Total are shown."""
+    Cost of Construction / Owner Costs / Project Total, each labelled in the
+    project's terminology. Pass a report fetched with markupMode
+    SEPARATED_MARKUPS to split direct costs from markups; otherwise only Cost
+    of Construction / Owner Costs / Project Total are shown."""
     rows = []
     if report_separated:
         by_type = defaultdict(float)
@@ -383,13 +506,13 @@ def buildup(cs, report_separated=None):
         direct = by_type.pop("DIRECT_COST", 0.0)
         owner = by_type.pop("OWNER_COST", 0.0)
         markups = sum(by_type.values())
-        rows += [("Direct Costs", direct, "sub"), ("Markups", markups, "sub")]
-    rows.append(("Cost of Construction", cs["cost_of_construction"], ""))
+        rows += [(T("DIRECT_COST"), direct, "sub"), (T("MARKUP"), markups, "sub")]
+    rows.append((T("COST_OF_CONSTRUCTION"), cs["cost_of_construction"], ""))
     if cs["has_owner_costs"]:
         rows.append(("Owner Costs", cs["owner_costs"], ""))
-    rows.append(("Project Total (Estimate)", cs["estimate"], "total"))
+    rows.append((f"{T('PROJECT_TOTAL')} ({T('ESTIMATE')})", cs["estimate"], "total"))
     rows.append(("Accepted Changes", cs["accepted_changes"], "sub"))
-    rows.append(("Project Running Total", cs["running_total"], "total"))
+    rows.append((T("PROJECT_RUNNING_TOTAL"), cs["running_total"], "total"))
     return rows
 
 # ---------------------------------------------------------------------- items
@@ -423,11 +546,12 @@ def item_rows(report):
 def items_catalog(items_list, report=None, details=None):
     """Merge items-for-project pages with report state and get-item details.
 
-    items_list: concatenated `items[]` (cents; CostScalar or CostRange; may or
-    may not carry status/assignee depending on connector version).
+    items_list: concatenated `items[]` (cost as decimal strings in whole
+    units; CostScalar or CostRange; carries status, assignee, dueDate,
+    scheduleImpact and categories on current connector versions).
     report: detailed milestone report (adds status/assignee for the active
-    milestone). details: list of get-item results (adds schedule impact,
-    due date, categories, activity links). Costs in DOLLARS."""
+    milestone). details: list of get-item results (adds activity links and,
+    on older connectors, schedule impact, due date and categories)."""
     state = {i["id"]: i for i in item_rows(report)} if report else {}
     det = {}
     for d in details or []:
@@ -437,9 +561,9 @@ def items_catalog(items_list, report=None, details=None):
     for it in items_list:
         c = it.get("cost") or {}
         if "min" in c or "max" in c:            # CostRange (with or without __typename)
-            lo, hi = cents(c.get("min") or 0), cents(c.get("max") or 0)
+            lo, hi = amount(c.get("min")), amount(c.get("max"))
         else:                                   # CostScalar
-            lo = hi = cents(c.get("value") or 0)
+            lo = hi = amount(c.get("value"))
         st = state.get(it["id"], {})
         dd = det.get(it["id"], {})
         assignee = (dd.get("assignee") or it.get("assignee") or {})
@@ -450,7 +574,7 @@ def items_catalog(items_list, report=None, details=None):
                     "is_option": bool(it.get("parentID")), "parent_id": it.get("parentID"), "options": it.get("options") or [],
                     "status": status, "assignee": assignee.get("name") or st.get("assignee"),
                     "assignee_email": assignee.get("email"), "updated": dd.get("updateTime") or it.get("updateTime") or st.get("updated"),
-                    "due": dd.get("dueDate") or st.get("due"), "schedule": dd.get("scheduleImpact"),
+                    "due": dd.get("dueDate") or it.get("dueDate") or st.get("due"), "schedule": dd.get("scheduleImpact") or it.get("scheduleImpact"),
                     "activity_ids": dd.get("activityIDs") or [], "categories": dd.get("categories") or it.get("categories") or st.get("categories", []),
                     "url": it.get("url")})
     return out
@@ -624,7 +748,7 @@ def gap_axis_check(est_rows, bud_rows, keyfn, catalog=None, cat_of=None, max_ung
     est = [(k, v) for k, v in rollup(est_rows, keyfn) if k != OWNER_COSTS]
     bud = dict(rollup(bud_rows, keyfn))
     if not bud_rows or not any(abs(v) >= 0.5 for v in bud.values()):
-        return False, "no Budget lines on the milestone"
+        return False, f"no {T('TARGET')} lines on the milestone"
     tot = sum(v for _, v in est) or 1.0
     ungrouped = sum(v for k, v in est if _is_ungrouped(k))
     if ungrouped / tot > max_ungrouped:
@@ -634,7 +758,7 @@ def gap_axis_check(est_rows, bud_rows, keyfn, catalog=None, cat_of=None, max_ung
         return False, "fewer than two categories on this axis"
     budgeted = sum(1 for k, v in real if abs(bud.get(k, 0.0)) >= 0.5)
     if budgeted < min_budgeted * len(real):
-        return False, f"only {budgeted} of {len(real)} categories carry a Budget"
+        return False, f"only {budgeted} of {len(real)} categories carry a {T('TARGET')}"
     if catalog is not None and cat_of is not None:
         pend = [i for i in catalog if not i["is_option"] and i["status"] == "PENDING"]
         if pend:
@@ -657,7 +781,7 @@ def gap_table(rows, wrap=False):
             when += ' <span class="chip pending">Soon</span>'
         out.append([esc(r["category"]), f'<span class="{gap_class(r["delta"])}">{money(r["delta"], signed=True)}</span>',
                     f'{money(r["pending_low"], signed=True)} to {money(r["pending_high"], signed=True)} <span class="muted">({r["pending_count"]})</span>', when])
-    return table(["Category", "Delta to Budget", "Pending Cost Impact", "Decide by"], out, num_cols=(1, 2), wrap=wrap)
+    return table(["Category", f"{T('DELTA')} to {T('TARGET')}", "Pending Cost Impact", "Decide by"], out, num_cols=(1, 2), wrap=wrap)
 
 
 # ------------------------------------------------------------ decisions by area
@@ -925,8 +1049,9 @@ def _nice_ticks(lo, hi, n=5):
 
 def trendline_svg(points, width=470, height=260, legend=True):
     """Inline SVG in the style of the app's Cost Trendline: dotted black
-    Baseline Estimate, solid black Running Total, blue Target Budget, dots and
-    value labels at each milestone, grey mesh lines, rotated milestone names."""
+    Estimate, solid black Running Total, blue Budget (legend labels in the
+    project's terminology), dots and value labels at each milestone, grey
+    mesh lines, rotated milestone names."""
     vals = [v for p in points for v in (p["estimate"], p["running"], p["budget"]) if v is not None]
     if not vals or len(points) < 2:
         return '<p class="empty">Not enough milestones with estimates for a trendline.</p>'
@@ -962,13 +1087,13 @@ def trendline_svg(points, width=470, height=260, legend=True):
     out.append("</svg>")
     svg = "".join(out)
     if legend:
-        svg = ('<div class="trend-legend"><span><i class="estimate"></i>Baseline Estimate Total</span>'
-               '<span><i></i>Running Total</span><span><i class="budget"></i>Target Budget</span></div>') + svg
+        svg = (f'<div class="trend-legend"><span><i class="estimate"></i>{esc(T("ESTIMATE"))}</span>'
+               f'<span><i></i>{esc(T("RUNNING_TOTAL"))}</span><span><i class="budget"></i>{esc(T("TARGET"))}</span></div>') + svg
     return svg
 
 
 def trend_table(points):
-    """Milestone · Date · Estimate · Running Total · Budget · Gap rows to pair with the chart."""
+    """Milestone · Date · Estimate · Running Total · Budget · Gap rows to pair with the chart (labels from T())."""
     rows, classes = [], []
     for p in points:
         if p["estimate"] is None:
@@ -977,7 +1102,7 @@ def trend_table(points):
         gap = (p["budget"] - p["running"]) if p["budget"] else None
         rows.append([esc(p["name"]), fmt_date(p["date"]), money(p["estimate"]), money(p["running"]), money(p["budget"]) if p["budget"] else "—",
                      f'<span class="gap">{money(gap, signed=True)}</span>' if gap is not None else "—"]); classes.append("")
-    return table(["Milestone", "Date", "Estimate", "Running Total", "Budget", "Gap"], rows, num_cols=(2, 3, 4, 5), row_classes=classes)
+    return table(["Milestone", "Date", T("ESTIMATE"), T("RUNNING_TOTAL"), T("TARGET"), T("GAP")], rows, num_cols=(2, 3, 4, 5), row_classes=classes)
 
 
 # ---------------------------------------------------------------------- risks
@@ -990,11 +1115,15 @@ def risk_urgency(score):
 
 def open_risks(risks):
     rs = [dict(r, score=(r.get("impact") or 0) * (r.get("likelihood") or 0)) for r in risks if r["status"] == "OPEN"]
-    return sorted(rs, key=lambda r: (-r["score"], -int(r.get("romCost") or 0)))
+    return sorted(rs, key=lambda r: (-r["score"], -amount(r.get("romCost"))))
 
 
-def risk_exposure_cents(risks):
-    return sum(int(r.get("romCost") or 0) for r in risks if r["status"] == "OPEN")
+def risk_cost_impact_total(risks):
+    """Sum of the Cost Impact (romCost, whole units) of the open risks."""
+    return sum(amount(r.get("romCost")) for r in risks if r["status"] == "OPEN")
+
+
+risk_exposure_cents = risk_cost_impact_total   # legacy name
 
 
 LIKELIHOOD_LABEL = {1: "Rare", 2: "Unlikely", 3: "Possible", 4: "Likely", 5: "Almost Certain"}
@@ -1013,7 +1142,7 @@ def risk_table(rs, urls, n=8):
     for r in rs:
         name = link(urls["risk"](r["id"]), f"{r['number']}. {r['name']}")
         if have_cost:
-            rows.append([name, urgency_chip(r["score"]), money_cents(r["romCost"])])
+            rows.append([name, urgency_chip(r["score"]), money_str(r["romCost"])])
         else:
             L, I = r.get("likelihood") or 0, r.get("impact") or 0
             rows.append([name, f'{LIKELIHOOD_LABEL.get(L, "—")} <span class="muted">{L or ""}</span>'.strip(),
@@ -1150,7 +1279,7 @@ def bars(pairs, budget=None, total=None, fmt=money, legend=True, gap_px=7):
                    f'<div class="num">{fmt(v)} <span class="muted">{pct(abs(v), total)}</span></div></div>')
     out.append("</div>")
     if legend:
-        out.append('<div class="legend"><span><i></i>Estimate</span>' + ('<span><i class="budget"></i>Budget</span>' if budget else "") + "</div>")
+        out.append(f'<div class="legend"><span><i></i>{esc(T("ESTIMATE"))}</span>' + (f'<span><i class="budget"></i>{esc(T("TARGET"))}</span>' if budget else "") + "</div>")
     return "".join(out)
 
 

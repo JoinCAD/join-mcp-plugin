@@ -7,14 +7,14 @@ assumptions about what is not (which pending items get accepted, which risks
 materialise). Everything assumed is written on page 1 so the room can argue
 about the assumptions rather than the arithmetic.
 
-## Definitions (dollars)
+## Definitions (whole units of the project's currency)
 
 | Symbol | Meaning |
 |---|---|
-| RT | Running Total = Estimate + Accepted Changes (Join's number) |
-| K | Contingency held = Σ contingency markup lines in the active milestone estimate |
-| B | Base Cost = RT − K — the cost if nothing else happens and contingency is untouched |
-| aᵢ | Cost Impact of pending item i (max of a range for adds, min for deducts; midpoint for the expected value) |
+| RT | Running Total = Estimate + Accepted Changes (Join's number; the project may call these "Baseline Estimate", "Target Value", … — the report uses its labels) |
+| K | Contingency held = Σ `remaining` of the contingencies in the active milestone (get-contingency-report: starting less accepted draws); fallback when that report is unavailable: Σ contingency markup lines of the milestone estimate (starting amounts) |
+| B | Base Cost = RT − K — the cost if nothing else happens and the remaining contingency is untouched |
+| aᵢ | Cost Impact of pending item i (max of a range for adds, min for deducts; midpoint for the expected value), gross of any pending contingency draw |
 | pᵢ | probability item i is accepted: `adds_pct` for adds, `deducts_pct` for deducts, 100 / 0 when carried as Accepted / Rejected |
 | cⱼ | Cost Impact of open risk j (from Join, set by the user, or assumed from the Impact score) |
 | qⱼ | probability risk j occurs: from the Likelihood table of the chosen scenario, or 100 / 0 when carried as Certain / Excluded, or a number the user gives |
@@ -25,6 +25,16 @@ backs contingency out instead (B = RT − K) so that the Running Total line is
 literally "the point at which contingency is used up". State this on page 1
 (the builder does) because someone comparing to the dashboard will notice
 the base chip differs by K.
+
+K is the *remaining* balance, not the starting one: an accepted item that
+drew on contingency sits in Accepted Changes at its net cost (often zero)
+and has already reduced the balance, so RT − remaining is the true
+unreserved cost. A pending item that draws on contingency likewise shows a
+net Cost Impact in Join; the model carries it gross (net − pending draw) so
+that when the simulation accepts it, the outcome moves by what the
+contingency would actually pay out. Page 1 lists the starting amount,
+accepted draws and pending draws so the arithmetic can be checked against
+the Contingency & Allowance Report in Join.
 
 ## Waterfall (page 2) — the app's `buildWaterfall`, ported
 
@@ -44,7 +54,7 @@ full amount if everything in it happens (Pending Adds, Pending Deducts, Σ cⱼ)
   Optimistic / Likely / Pessimistic tables. They are for the conversation
   ("how much does the probability table matter?"), not printed on the report.
 
-Likelihood → probability (from komodo-ui `useChartData.ts`):
+Likelihood → probability (as in the Join web app's Cost Risk Calculator):
 
 | Likelihood | Optimistic | Likely | Pessimistic |
 |---|---|---|---|
@@ -83,9 +93,10 @@ same numbers; it is recorded in model.json, not on the report.
 
 Default `costless_risk_method: pct_of_running_total` with Impact →
 0.1 / 0.5 / 1 / 2.5 / 5 % of RT (Insignificant → Severe). Alternatives:
-`fixed` with `impact_dollars`, or `exclude`. Whatever is used, page 1 lists
-the resulting dollars per risk with the chip *Assumed*, and the user can
-replace any of them with `{"cost": <dollars>}` in `assumptions.risks`.
+`fixed` with `impact_dollars` (whole units of the project's currency, the
+name notwithstanding), or `exclude`. Whatever is used, page 1 lists the
+resulting figure per risk with the chip *Assumed*, and the user can replace
+any of them with `{"cost": <amount>}` in `assumptions.risks`.
 
 ## assumptions.json
 
@@ -103,6 +114,7 @@ replace any of them with `{"cost": <dollars>}` in `assumptions.risks`.
   "impact_dollars": {"1": 25000, "2": 100000, "3": 250000, "4": 1000000, "5": 2500000},
   "contingency_override": null,
   "include_company_risks": false,
+  "project_id": null,
   "trials": 10000,
   "seed": 42,
   "notes": ["#77 carried as rejected: owner confirmed cast-in-place on 25 Sep."]
@@ -110,7 +122,9 @@ replace any of them with `{"cost": <dollars>}` in `assumptions.risks`.
 ```
 
 Keys in `items` / `risks` are item or risk **numbers** (as shown in Join) or
-ids. `risk_scenario: "custom"` uses `risk_probabilities` as given. Every
+ids. `project_id` only matters when `project.json` is a list page holding
+several projects. Amounts (`cost`, `contingency_override`, `impact_dollars`)
+are whole units of the project's currency. `risk_scenario: "custom"` uses `risk_probabilities` as given. Every
 field is optional; omitted fields take the defaults above. `notes` are
 printed verbatim under Basis — use them for the *why* behind each override,
 in the user's words.

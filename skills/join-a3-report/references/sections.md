@@ -27,7 +27,11 @@ Next Due) and a **Schedule Impact column that reads TBD** (TBD is a value in
 Join; a column of N/A or unset is not and is dropped).
 
 Use Join's words (`references/join-design.md`): Cost Impact, not "swing" or
-"exposure"; Running Total, not "projected cost"; Gap, not "variance".
+"exposure"; Running Total, not "projected cost"; Gap, not "variance". Where
+the project has renamed a concept, use its label: the helpers do this through
+`T()` once `configure(project, terms)` has run, and anything you write in a
+subtitle yourself should too — `f"By Location · {T('ESTIMATE')} vs {T('TARGET')}"`,
+not a hard-coded "Estimate vs Budget".
 
 ## Cost breakdown
 
@@ -56,7 +60,8 @@ to Project Total. If the category list has more than ~16 rows it will not fit; t
 Costs, Project Total, Accepted Changes, Project Running Total — using a
 second milestone report fetched with `markupMode: SEPARATED_MARKUPS`.
 Subtitle states the axis and basis, e.g. "By Location · Estimate vs Budget,
-incl. Owner Costs".
+incl. Owner Costs" — built with `T("ESTIMATE")` / `T("TARGET")` so a project
+that says "Baseline Estimate vs Target Budget" reads that way.
 
 ## Gap Analysis
 
@@ -237,8 +242,8 @@ body = trendline_svg(pts)                                    # chart in the app'
 # With three or fewer milestones there is room for the table too: trendline_svg(pts, height=200) + trend_table(pts)
 ```
 
-The chart mirrors the app: dotted black Baseline Estimate Total, solid black
-Running Total, blue Target Budget, a dot and value label at each milestone,
+The chart mirrors the app: dotted black Estimate, solid black Running
+Total, blue Budget (legend in the project's labels), a dot and value label at each milestone,
 grey mesh lines, milestone names on the x axis. Use it whenever the project
 has three or more estimated milestones — it answers "is the Gap opening or
 closing" faster than any table. Subtitle states the basis (all-in when

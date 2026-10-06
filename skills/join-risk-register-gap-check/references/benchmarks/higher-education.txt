@@ -1,0 +1,21 @@
+theme | share
+Budget & Funding | 0.0235
+Contract & Insurance | 0.0137
+Design Completeness & Changes | 0.0797
+Energy Code & Sustainability | 0.0186
+Envelope & Finishes | 0.0400
+Existing Conditions & Renovation | 0.0997
+Geotechnical & Unforeseen Site Conditions | 0.0633
+Labor & Workforce | 0.0066
+Logistics & Site Access | 0.0474
+MEP & Building Systems | 0.1356
+Material Cost Escalation | 0.0443
+Owner Scope & Program Changes | 0.0633
+Permitting & Agency Approvals | 0.0783
+Procurement & Long-Lead | 0.0456
+Safety & Quality | 0.0423
+Schedule & Phasing | 0.0421
+Seismic & Structural | 0.0319
+Tariffs & Trade Policy | 0.0133
+Utilities & Site Services | 0.0863
+Weather & Environment | 0.0246

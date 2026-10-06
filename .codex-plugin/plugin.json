@@ -1,6 +1,6 @@
 {
   "name": "join",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Join (https://join.build) aligns owners, design teams, and contractors within a unified system of record for preconstruction and the design phase. By integrating real-time cost and schedule data with design evolution, Join provides the decision intelligence necessary to manage risk on complex projects and ensure predictable project delivery at scale.\n\nThis plugin bundles the Join MCP server, which allows you to interact with your project- and company-level Join data from Codex, with skills for working with Join project data and producing custom reports.",
   "author": {
     "name": "Join",
@@ -18,14 +18,16 @@
     "budget",
     "risk",
     "report",
-    "contingency"
+    "contingency",
+    "meetings",
+    "transcript"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Join",
     "shortDescription": "Construction cost and risk",
-    "longDescription": "Work with your Join projects: look up projects, milestones, cost totals, items, risks and history, add comments and items, build a one-page A3 executive snapshot of a project, and run a risk and contingency analysis (Cost Risk Calculator waterfall and Monte Carlo range of outcomes).",
+    "longDescription": "Work with your Join projects: look up projects, milestones, cost totals, items, risks and history, add comments and items, build a one-page A3 executive snapshot of a project, run a risk and contingency analysis (Cost Risk Calculator waterfall and Monte Carlo range of outcomes), check a risk register for gaps against similar projects, and reconcile a meeting transcript or minutes with Join items, applying the updates you confirm.",
     "developerName": "Join",
     "category": "Productivity",
     "capabilities": [
@@ -40,7 +42,9 @@
     "defaultPrompt": [
       "Build an A3 snapshot of my Join project for the owner's executive sponsor",
       "Is the contingency on my Join project enough to cover where it will land?",
-      "What are the biggest open cost risks on my Join project?"
+      "What are the biggest open cost risks on my Join project?",
+      "What risks might my Join project's risk register be missing?",
+      "Update Join from this OAC meeting transcript"
     ],
     "logo": "./assets/join-icon.svg",
     "logoDark": "./assets/join-icon-dark.svg",

@@ -93,7 +93,7 @@ def footer_stamp(spec):
 def build(spec):
     html = TEMPLATE.read_text()
     logos = spec.get("logos") or {}
-    # The Join mark is inline in the template (komodo-ui's JoinLogo); logos.join swaps in a custom file only when given.
+    # The Join mark is inline in the template (the Join web app's logo); logos.join swaps in a custom file only when given.
     custom_join = img_tag(logos.get("join"), "Join") if logos.get("join") else None
     if custom_join:
         html = re.sub(r"<!--JOIN_LOGO_START-->.*?<!--JOIN_LOGO_END-->", custom_join, html, flags=re.S)

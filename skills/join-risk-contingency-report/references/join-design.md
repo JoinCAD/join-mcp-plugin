@@ -1,6 +1,6 @@
 # Join design language and terminology
 
-Extracted from the Join web application (komodo) so the report looks and
+Extracted from the Join web application so the report looks and
 reads like a Join page. The template (`assets/template.html`) already applies
 all of this; use this file when you author section content or extend the
 template, so new elements stay consistent.
@@ -87,25 +87,35 @@ Item status colors (chip text / tint background):
 
 ## Terminology (use these words, nothing else)
 
-From Join's terminology defaults and their in-app definitions:
+From Join's terminology defaults and their in-app definitions. Ten of these
+concepts can be **renamed per project** (Join's project settings), and the
+app then shows the project's label everywhere — the dashboard, the items
+list, the printed reports. `terminology-for-project` returns the labels in
+use, keyed by concept: ESTIMATE, TARGET (Budget), DELTA, RUNNING_TOTAL, GAP,
+DIRECT_COST, MARKUP, COST_OF_CONSTRUCTION, PROJECT_TOTAL,
+PROJECT_RUNNING_TOTAL. A report that says "Budget" to a team whose Join says
+"Target Value" reads as if it came from somewhere else, so the renamed label
+is the right word in the report *and* in the conversation about it. The
+scripts apply them through `T(concept)`; the table below gives the defaults
+and marks the renamable concepts with their key.
 
 | Term | Definition |
 |---|---|
-| **Estimate** | The baseline estimate for the project in a milestone. Items are changes relative to it. |
-| **Budget** | The target amount allocated for the project. (Some projects rename this; the connector does not expose the rename, so use "Budget".) |
-| **Delta** | Budget − Estimate. Negative if the estimate is over budget. |
+| **Estimate** `ESTIMATE` | The baseline estimate for the project in a milestone. Items are changes relative to it. |
+| **Budget** `TARGET` | The target amount allocated for the project. |
+| **Delta** `DELTA` | Budget − Estimate. Negative if the estimate is over budget. |
 | **Accepted Changes** | Total value of accepted items. |
-| **Running Total** | Estimate + accepted items: the real-time project cost. |
+| **Running Total** `RUNNING_TOTAL` | Estimate + accepted items: the real-time project cost. |
 | **Pending Adds / Pending Deducts** | Value of pending items with positive / negative cost impact — changes yet to be finalized. |
 | **Potential Range** | Running Total + all pending deducts … Running Total + all pending adds. |
-| **Gap** | Budget − Running Total: the change still needed to meet budget. **Negative when over budget.** |
+| **Gap** `GAP` | Budget − Running Total: the change still needed to meet budget. **Negative when over budget.** |
 | **Gap Trending Minimum / Maximum** | Gap if all pending deducts / adds are accepted. |
-| **Direct Costs** | Materials, labor, equipment. |
-| **Markups** | Indirect, below-the-line costs. |
-| **Cost of Construction** | All costs excluding Owner Costs. |
+| **Direct Costs** `DIRECT_COST` | Materials, labor, equipment. |
+| **Markups** `MARKUP` | Indirect, below-the-line costs. |
+| **Cost of Construction** `COST_OF_CONSTRUCTION` | All costs excluding Owner Costs. |
 | **Owner Costs** | Costs carried by the owner outside the construction contract. |
-| **Project Total** | All costs including Owner Costs. |
-| **Project Running Total** | Running Total including Owner Costs. |
+| **Project Total** `PROJECT_TOTAL` | All costs including Owner Costs. |
+| **Project Running Total** `PROJECT_RUNNING_TOTAL` | Running Total including Owner Costs. |
 | **Item** / **Option** | A scope decision / one alternative within an item. |
 | **Cost Impact** | An item's or risk's effect on cost. Never "swing", "exposure", "delta" (for items) or "savings" as a column name. |
 | **Schedule Impact** | An item's effect on schedule, in days; may be on the critical path, TBD or N/A. |
@@ -117,8 +127,10 @@ From Join's terminology defaults and their in-app definitions:
 | **Risk urgency** | Score 1–5 Low · 6–14 Medium · 15–25 High · otherwise Undetermined. |
 | **Categorization** | A labeling scheme (UniFormat, MasterFormat, Location, …); a **Category** is one value in it. |
 | **Scenario** | A what-if combination of item decisions. |
-| **Contingency** / **Allowance** | Reserves tracked with draws; not exposed by the connector. |
+| **Contingency** / **Allowance** | Reserves carried as milestone markups and drawn down by items; `get-contingency-report` gives each one's starting, pending, accepted and remaining amounts. |
 
+Money is formatted in the project's currency (`currency` on the project
+record: $, £, €, …), short form as in the app ($1.2B / $209.8M / $531K).
 Sign convention on the sheet: cost impacts are shown with their sign
 (−$1.2M is a deduct, +$800K an add). Gap and Delta follow Join: negative
 means over budget. They are set in `--type-muted` grey exactly as the Gap
@@ -129,11 +141,11 @@ the app; adds stay in the default text color.
 ## Layout conventions borrowed from Join
 
 - Cost summary block order: Estimate · Accepted Changes · Running Total ·
-  Pending Adds/Deducts · Potential Range · Gap. (Projects may rename terms
-  in their display settings — the app screenshot may say "Baseline
-  Estimate" / "Target Budget"; the connector does not expose renames, so the
-  sheet uses the defaults, except the Cost Trendline legend which uses the
-  chart's own labels: Baseline Estimate Total · Running Total · Target Budget.)
+  Pending Adds/Deducts · Potential Range · Gap — each in the project's own
+  label where it has renamed one (a project that says "Baseline Estimate"
+  and "Target Budget" in the app gets those words here too, from
+  `terminology-for-project`). The Cost Trendline legend uses the same three
+  labels: Estimate · Running Total · Budget as the project names them.
 - Cost Trendline: dotted black baseline estimate, solid black running total
   (2px), blue-500 budget (2px), 4.5px dots, 11px value labels, grey-300 mesh
   lines and axis, milestone names rotated on the x axis. `trendline_svg()`

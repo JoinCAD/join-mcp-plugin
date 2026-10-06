@@ -27,6 +27,8 @@ story or scenario section — Join's numbers, Join's words, and links.
 Read `references/sections.md` at step 3 (the catalog and recommendation
 table) and `references/join-design.md` before authoring anything the helpers
 don't already produce (it holds Join's colors, type scale and terminology).
+Fetch the project's terminology (step 2) before you first describe its
+numbers to the user, so you use its words from the start.
 
 ## 1. Project and reader
 
@@ -43,27 +45,41 @@ Always fetch the timeline, both risk registers and the project-wide
 `get-item-history` for the last four weeks — they decide which sections the
 sheet gets, and what you ask for at the end.
 
-Three facts about the data that produce wrong sheets when missed:
+Four facts about the data that produce wrong sheets when missed:
 
-- **Units.** List and cost tools return strings of US cents; the milestone
-  report resource returns float dollars. `join_data` converts at load.
+- **Units and currency.** Every tool returns money in whole currency units
+  — decimal strings like `"33554413.16"` from the list and cost tools,
+  plain numbers from the milestone report resource. Nothing is in cents, so
+  nothing gets divided by 100. The project record's `currency` (USD, GBP,
+  EUR, …) decides the symbol; `configure(project, terms)` sets it and
+  `money()` prints £ or € where the project does.
+- **Terminology.** A project can rename its cost concepts, and Join then
+  shows the renamed labels everywhere in that project. Fetch
+  `terminology-for-project` with the project record and pass it to
+  `configure()`; every label the helpers render then uses the project's
+  words, and `T("TARGET")`, `T("ESTIMATE")`, … give you the word for any
+  text you write yourself. Use the same words when you talk to the user
+  about the project — a sponsor whose Join says "Target Value" should not
+  read "Budget" on the sheet or hear it from you. `terminology_note()`
+  gives a one-liner for the delivery when a project has renamed something.
 - **Basis.** Use **all-in costs** (Project Total / Project Running Total,
   including Owner Costs) wherever the project carries owner costs. Fetch the
   milestone report in its default cost mode (allocated markups, owner costs
   included) so items and estimate lines are on the same basis;
   `cost_summary()` reconciles them and tells you whether the Budget in Join
   includes owner costs.
-- **Terminology.** Estimate, Budget, Accepted Changes, Running Total, Pending
-  Adds / Deducts, Potential Range, Gap (Budget − Running Total; negative when
-  over budget), Cost Impact, Schedule Impact, Due Date, Past Due, Likelihood,
-  Impact, Risk Score. These are Join's labels and their definitions are in
+- **Join's words, nothing else.** Estimate, Budget, Accepted Changes,
+  Running Total, Pending Adds / Deducts, Potential Range, Gap (Budget −
+  Running Total; negative when over budget), Cost Impact, Schedule Impact,
+  Due Date, Past Due, Likelihood, Impact, Risk Score — with the project's
+  renames applied to the first group as above. Definitions are in
   `join-design.md`. Don't invent synonyms — "swing", "exposure", "variance",
   "projected" are not Join words.
 
 ## 3. Recommend, then ask once
 
 Header is fixed: **Project Running Total · Budget · Gap · Pending Deducts ·
-Pending Adds**, plus **Open Risks / Cost Impact** when the register has
+Pending Adds** (labelled as the project names them), plus **Open Risks / Cost Impact** when the register has
 entries and **Next Milestone / Event** when the timeline has one. Six panels
 below. Default six: **Cost breakdown · Gap Analysis · Risk summary · Timeline
 · Top decisions · Work in flight**; adjust from the data using the table at
@@ -91,10 +107,12 @@ and say so in delivery.
 
 ## 4. Compute and author
 
-Write a short script that imports `scripts/join_data.py`, loads the saved
-files, computes each section, and writes `spec.json` (shape documented at
-the top of `build_report.py`). The helpers cover the repetitive parts:
-`cost_summary`, `header_metrics`, `pick_breakdown_axis`, `rollup`, `buildup`,
+Write a short script that imports `scripts/join_data.py`, calls
+`configure(project, terms)` first (currency and terminology — every label
+and figure after that depends on it), loads the saved files, computes each
+section, and writes `spec.json` (shape documented at the top of
+`build_report.py`). The helpers cover the repetitive parts: `configure`,
+`project_record`, `T`, `terminology_note`, `cost_summary`, `header_metrics`, `pick_breakdown_axis`, `rollup`, `buildup`,
 `items_catalog`, `top_decisions`, `work_in_flight`, `gap_axis_check`,
 `gap_analysis`, `pick_area_axis`, `decisions_by_area`, `recent_activity`,
 `milestone_trend`, `open_risks`, `timeline_window`, `has_future_activities`,
@@ -153,7 +171,9 @@ labels are all "Unassigned" or a Gap table whose Deltas are all $0.
 One or two sentences: which sections and why, and anything about the data
 the reader should know ("no activities scheduled after 16 Aug in Join";
 "Gap Analysis left off — 26 of 27 pending items have no STRUCTURE
-category"). Offer to drop in logo files if placeholders were used.
+category"; `terminology_note()` when the project renames a term, so nobody
+goes looking for a "Budget" column the sheet calls "Target Budget"). Offer
+to drop in logo files if placeholders were used.
 
 **End every delivery with the data ask**, when it applies. The sheet is
 only as good as the register and the timeline behind it, so if the project
@@ -171,9 +191,9 @@ paragraph only when both are already populated.
 
 - `scripts/build_report.py` — spec → self-contained HTML (template and logos inlined; footer = timestamp only).
 - `scripts/check_fit.py` — HTML → one-page A3 PDF; fails on overflow, flags sparse panels and wrapped cells.
-- `scripts/join_data.py` — loaders, money, cost summary, rollups, item catalog, gap check and analysis, decisions by area, recent activity, risks, timeline, HTML blocks (column pruning, no-wrap tables), Join URLs.
-- `assets/template.html` — the A3 layout in Join's light theme, with the Join mark (from komodo-ui `JoinLogo.tsx`) inline in the footer.
+- `scripts/join_data.py` — loaders, `configure()` (currency + terminology), money, cost summary, rollups, item catalog, gap check and analysis, decisions by area, recent activity, risks, timeline, HTML blocks (column pruning, no-wrap tables), Join URLs.
+- `assets/template.html` — the A3 layout in Join's light theme, with the Join mark (the Join web app's logo) inline in the footer.
 - `assets/join-logo.svg` — the same Join mark as a standalone file (the template already has it inline; `logos.join` in the spec overrides it).
-- `references/data-gathering.md` — tool-by-tool guide: fields, pagination, units, cost modes, edit log.
+- `references/data-gathering.md` — tool-by-tool guide: fields, pagination, units and currency, terminology, cost modes, edit log.
 - `references/sections.md` — section catalog (incl. Recent Activity, Decisions by area) and recommendation table.
-- `references/join-design.md` — Join's colors, type scale, terminology and definitions.
+- `references/join-design.md` — Join's colors, type scale, terminology (defaults, renamable concepts) and definitions.

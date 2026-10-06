@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Risk & contingency model for a Join project.
 
-Ports the logic of the app's Cost Risk Calculator (komodo-ui
-`DashboardCharts/CostRiskCalculator`: waterfallModel.ts, useChartData.ts)
-and adds per-item / per-risk overrides plus a Monte Carlo simulation.
+Ports the logic of the Join web app's Cost Risk Calculator and adds
+per-item / per-risk overrides plus a Monte Carlo simulation.
 
 Two ways to use it:
 
@@ -17,9 +16,24 @@ Two ways to use it:
     # 2. as a CLI once assumptions.json is written
     python risk_model.py work/assumptions.json work/model.json
 
-Money: connector list/cost tools return STRINGS OF US CENTS; the detailed
-milestone report resource returns FLOAT DOLLARS. Everything here is dollars
-once loaded.
+Money: every connector tool returns money in WHOLE CURRENCY UNITS — the
+list/cost tools and get-contingency-report as decimal strings
+("1495000.00", "-90405.87"), the milestone report resource as plain numbers.
+Nothing is in cents. `load_inputs` reads the project's `currency` and
+`money()` formats in it ($, £, €, …).
+
+Terminology: a project can rename Estimate, Budget, Running Total, Gap and
+the other cost concepts, and Join shows the renamed labels throughout that
+project. Save `terminology-for-project` as `terms.json`; `load_inputs` picks
+it up, the report prints the project's labels, and `T("TARGET")` gives you
+the right word when you write to the user.
+
+Contingency: `get-contingency-report` (saved as `contingency.json`) carries
+each contingency's starting amount, pending and accepted draws, and the
+amount REMAINING. The model backs the remaining amount out of the Running
+Total to get Base Cost; the SEPARATED_MARKUPS milestone report's contingency
+lines (starting amounts) are the fallback when the contingency report is
+not available to the user's role.
 """
 import json
 import math
@@ -28,9 +42,64 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# -------------------------------------------------------------- terminology
+# Concept keys and default labels exactly as terminology-for-project returns them.
+DEFAULT_TERMS = {
+    "ESTIMATE": "Estimate", "TARGET": "Budget", "DELTA": "Delta", "RUNNING_TOTAL": "Running Total", "GAP": "Gap",
+    "DIRECT_COST": "Direct Costs", "MARKUP": "Markups", "COST_OF_CONSTRUCTION": "Cost of Construction",
+    "PROJECT_TOTAL": "Project Total", "PROJECT_RUNNING_TOTAL": "Project Running Total",
+}
+TERMS = dict(DEFAULT_TERMS)
+
+
+def set_terms(terms):
+    """Install a project's terminology: the terminology-for-project result
+    ({"terms": {...}}), a bare {concept: label} dict, or None for defaults.
+    Blank or unknown labels fall back to the default."""
+    global TERMS
+    t = (terms or {}).get("terms", terms) if isinstance(terms, dict) else {}
+    TERMS = {k: (str((t or {}).get(k) or "").strip() or v) for k, v in DEFAULT_TERMS.items()}
+    return TERMS
+
+
+def T(concept):
+    """The project's label for a concept: T("TARGET") → 'Budget' or 'Target Value'."""
+    return TERMS.get(concept) or DEFAULT_TERMS[concept]
+
+
+def renamed_terms():
+    """{concept: (default, project label)} for every concept the project renamed."""
+    return {k: (DEFAULT_TERMS[k], TERMS[k]) for k in DEFAULT_TERMS if TERMS[k] != DEFAULT_TERMS[k]}
+
+
+def terminology_note():
+    """One sentence for the delivery, or '' when the project uses the defaults."""
+    r = renamed_terms()
+    if not r:
+        return ""
+    parts = [f'the {d} "{p}"' for d, p in r.values()]
+    body = ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1]
+    return f"This project calls {body}; the report uses those labels."
+
+# ----------------------------------------------------------------- currency
+CURRENCY_SYMBOLS = {"USD": "$", "CAD": "CA$", "AUD": "A$", "NZD": "NZ$", "SGD": "S$", "HKD": "HK$", "MXN": "MX$",
+                    "GBP": "£", "EUR": "€", "JPY": "¥", "CNY": "¥", "INR": "₹", "KRW": "₩", "ILS": "₪", "PHP": "₱",
+                    "CHF": "CHF ", "SEK": "kr ", "NOK": "kr ", "DKK": "kr ", "ZAR": "R", "BRL": "R$", "AED": "AED ", "SAR": "SAR "}
+CURRENCY = {"code": "USD", "symbol": "$"}
+
+
+def set_currency(code):
+    """Format money in the project's currency (project record `currency`).
+    Unknown codes print as 'CODE 1.2M'."""
+    code = (code or "USD").upper()
+    CURRENCY["code"] = code
+    CURRENCY["symbol"] = CURRENCY_SYMBOLS.get(code, code + " ")
+    return CURRENCY
+
 # ------------------------------------------------------------------ defaults
-# Straight from the app (useChartData.ts / types.ts). Probability, in %, that a
-# risk with the given Likelihood (1 Rare … 5 Almost Certain) materialises.
+# Straight from the Join web app's Cost Risk Calculator. Probability, in %,
+# that a risk with the given Likelihood (1 Rare … 5 Almost Certain)
+# materialises.
 RISK_SCENARIOS = {
     "optimistic": {1: 5, 2: 15, 3: 25, 4: 40, 5: 55},
     "likely": {1: 10, 2: 30, 3: 50, 4: 70, 5: 90},
@@ -67,29 +136,35 @@ def load(path):
     return d
 
 
-def cents(x):
-    return (float(x) if x not in (None, "") else 0.0) / 100.0
+def amount(x):
+    """Connector money → float in whole units: '1495000.00' → 1495000.0; None/'' → 0.0."""
+    return float(x) if x not in (None, "") else 0.0
 
 
-def money(dollars, signed=False):
-    """$1.2B / $209.8M / $531K / $2,013 — the app's short cost format."""
-    if dollars is None:
+cents = amount   # legacy name from when the connector returned cents; nothing is divided any more
+
+
+def money(value, signed=False):
+    """$1.2B / $209.8M / $531K / $2,013 — the app's short cost format, in the
+    project's currency symbol (set_currency / load_inputs)."""
+    if value is None:
         return "—"
-    neg = dollars < 0
-    a = abs(dollars)
+    sym = CURRENCY["symbol"]
+    neg = value < 0
+    a = abs(value)
     if a >= 1e9:
-        s = f"${a/1e9:.2f}B".replace(".00B", "B")
+        s = f"{sym}{a/1e9:.2f}B".replace(".00B", "B")
     elif a >= 1e6:
-        s = f"${a/1e6:.2f}M".replace(".00M", "M")
+        s = f"{sym}{a/1e6:.2f}M".replace(".00M", "M")
         if s.endswith("0M") and "." in s:
             s = s[:-2] + "M"
     elif a >= 1e3:
-        s = f"${a/1e3:.0f}K"
+        s = f"{sym}{a/1e3:.0f}K"
     else:
-        s = f"${a:,.0f}"
+        s = f"{sym}{a:,.0f}"
     if neg:
         return "−" + s
-    return ("+" + s) if signed and dollars > 0 else s
+    return ("+" + s) if signed and value > 0 else s
 
 
 def pct(x, digits=0):
@@ -103,26 +178,53 @@ def _pages(workdir, stem, key):
     return out
 
 
-def load_inputs(workdir):
-    """Read the saved connector files in `workdir` (names from references/data-gathering.md)."""
+def project_record(d, project_id=None):
+    """The one project record from a saved list-my-projects / search-projects
+    page (`projects[]`) or an already-bare record."""
+    if isinstance(d, dict) and "projects" in d:
+        ps = d["projects"]
+        return next((p for p in ps if p["id"] == project_id), ps[0] if ps else {})
+    return d or {}
+
+
+def load_inputs(workdir, project_id=None):
+    """Read the saved connector files in `workdir` (names from
+    references/data-gathering.md). Sets the currency from the project record
+    and the terminology from terms.json when present. contingency.json
+    (get-contingency-report, active milestone) is optional but preferred —
+    see contingency_held()."""
     w = Path(workdir)
-    project = load(w / "project.json")
     costs = load(w / "costs.json")
+    project = project_record(load(w / "project.json"), project_id or costs.get("projectId"))
     report = load(w / "report.json")
     milestones = load(w / "milestones.json").get("milestones", []) if (w / "milestones.json").exists() else []
-    items = normalize_items(_pages(w, "items", "items"))
+    terms = load(w / "terms.json") if (w / "terms.json").exists() else None
+    cont_report = load(w / "contingency.json") if (w / "contingency.json").exists() else None
+    set_currency(project.get("currency") or (cont_report or {}).get("currency"))
+    set_terms(terms)
+    draws = pending_draws(cont_report, costs.get("milestoneId"))
+    items = normalize_items(_pages(w, "items", "items"), draws)
     risks = normalize_risks(_pages(w, "risks", "risks"))
     ms = next((m for m in milestones if m["id"] == costs.get("milestoneId")), None)
     return {
         "project": project, "costs": costs, "report": report, "milestones": milestones,
-        "milestone": ms, "items": items, "risks": risks,
+        "milestone": ms, "items": items, "risks": risks, "terms": dict(TERMS), "currency": CURRENCY["code"],
+        "contingency_report": cont_report,
         "contingencies": contingency_lines(report), "allowances": allowance_lines(report),
     }
 
 
-def normalize_items(rows):
-    """Item rows only (options are folded into their parent item's cost/status)."""
+def normalize_items(rows, draws=None):
+    """Item rows only (options are folded into their parent item's cost/status).
+
+    draws: {itemID: pending contingency draw (negative)} from pending_draws().
+    An item that draws on a contingency shows its NET Cost Impact in Join —
+    often 0.00 — because the draw offsets it. The model works against the
+    contingency REMAINING, so such an item is carried at its gross cost
+    (cost − draw): accepting it then consumes contingency in the simulation
+    exactly as it would in Join. `draw` on the row records the adjustment."""
     out, seen = [], set()
+    draws = draws or {}
     for it in rows:
         if it.get("parentID") or it.get("itemType") == "OPTION":
             continue
@@ -131,15 +233,17 @@ def normalize_items(rows):
         seen.add(it["id"])
         c = it.get("cost") or {}
         if "value" in c and c["value"] is not None:
-            lo = hi = cents(c["value"])
+            lo = hi = amount(c["value"])
         else:
-            lo, hi = cents(c.get("min")), cents(c.get("max"))
+            lo, hi = amount(c.get("min")), amount(c.get("max"))
             if lo > hi:
                 lo, hi = hi, lo
+        draw = draws.get(it["id"], 0.0) if it.get("status") == "PENDING" else 0.0
+        lo, hi = lo - draw, hi - draw
         out.append({
             "id": it["id"], "number": str(it.get("number", "")), "name": it.get("name", ""),
             "status": it.get("status"), "cost_lo": lo, "cost_hi": hi, "cost": (lo + hi) / 2,
-            "is_range": abs(hi - lo) > 0.005, "url": it.get("url"),
+            "is_range": abs(hi - lo) > 0.005, "url": it.get("url"), "draw": draw,
             "milestone_id": (it.get("currentMilestone") or it.get("milestone") or {}).get("id"),
             "due_date": it.get("dueDate"), "assignee": (it.get("assignee") or {}).get("name"),
         })
@@ -156,9 +260,55 @@ def normalize_risks(rows):
             "id": r["id"], "number": str(r.get("number", "")), "name": r.get("name", ""),
             "type": r.get("type", "PROJECT"), "status": r.get("status"),
             "impact": r.get("impact"), "likelihood": r.get("likelihood"),
-            "rom_cost": cents(r["romCost"]) if r.get("romCost") not in (None, "") else None,
+            "rom_cost": amount(r["romCost"]) if r.get("romCost") not in (None, "") else None,
             "url": r.get("url"),
         })
+    return out
+
+
+# --------------------------------------------------- contingency report
+
+def _active_contingency_milestone(cont_report, milestone_id=None):
+    if not cont_report:
+        return None
+    ms = cont_report.get("milestones") or []
+    return (next((m for m in ms if m.get("milestoneID") == milestone_id), None)
+            or next((m for m in ms if m.get("active")), None) or (ms[0] if ms else None))
+
+
+def contingency_held(cont_report, milestone_id=None):
+    """Contingency and allowance balances from get-contingency-report for the
+    active milestone, in whole units. Each line: name, starting, pending,
+    accepted (draws so far, negative), remaining (= what the project still
+    holds — the figure the model uses), owner cost flag, type. Returns None
+    when the report was not saved (role restriction)."""
+    m = _active_contingency_milestone(cont_report, milestone_id)
+    if m is None:
+        return None
+    lines = []
+    for c in m.get("contingencies") or []:
+        lines.append({"name": c.get("name"), "type": c.get("type"), "is_owner_cost": bool(c.get("ownerCost")),
+                      "starting": amount(c.get("starting")), "pending": amount(c.get("pending")),
+                      "accepted": amount(c.get("accepted")) + amount(c.get("incorporated")),
+                      "remaining": amount(c.get("remaining")), "overdrawn": bool(c.get("overdrawn"))})
+    return {"milestone_id": m.get("milestoneID"), "lines": lines,
+            "contingencies": [l for l in lines if l["type"] == "CONTINGENCY"],
+            "allowances": [l for l in lines if l["type"] == "ALLOWANCE"]}
+
+
+def pending_draws(cont_report, milestone_id=None):
+    """{itemID: Σ pending draw amount (negative)} across the CONTINGENCY lines
+    of the active milestone. Allowance draws are left out: allowances are not
+    part of the contingency the model tests, so an item drawing on one keeps
+    the net Cost Impact Join shows."""
+    m = _active_contingency_milestone(cont_report, milestone_id)
+    out = {}
+    for c in (m or {}).get("contingencies") or []:
+        if c.get("type") != "CONTINGENCY":
+            continue
+        for d in c.get("draws") or []:
+            if d.get("status") == "PENDING":
+                out[d["itemID"]] = out.get(d["itemID"], 0.0) + amount(d.get("amount"))
     return out
 
 
@@ -185,13 +335,20 @@ def allowance_lines(report):
 # ------------------------------------------------------------- cost summary
 
 def cost_summary(inputs):
-    """Join's cost summary in dollars: Estimate · Accepted Changes · Running
-    Total · Pending Adds / Deducts · Budget · Gap, plus contingency held."""
+    """Join's cost summary in whole currency units: Estimate · Accepted
+    Changes · Running Total · Pending Adds / Deducts · Budget · Gap, plus the
+    contingency held.
+
+    Contingency comes from get-contingency-report when it was saved: the
+    REMAINING amount (starting − accepted draws) is what the project still
+    holds, and Base Cost = Running Total − remaining. Without it, the
+    SEPARATED_MARKUPS report's contingency lines give the starting amount
+    (`contingency_source` says which, so page 1 can say so)."""
     costs, project, items = inputs["costs"], inputs["project"], inputs["items"]
-    estimate = cents(costs["total"])                                  # Project Total, all-in
+    estimate = amount(costs["total"])                                 # Project Total, all-in
     budget_rows = sum((r["costDetail"]["total"] or 0.0) for r in inputs["report"]["rows"]
                       if r.get("source") == "MILESTONE_BUDGET" and r.get("isCountedInTotals", True))
-    budget = budget_rows or cents(project.get("budget") or 0)
+    budget = budget_rows or amount(project.get("budget") or 0)
     ms_id = costs.get("milestoneId")
     # items-for-project's default "active" view already lists exactly the items the
     # active milestone counts (including ones still sitting in an earlier milestone),
@@ -201,15 +358,31 @@ def cost_summary(inputs):
     adds = [i for i in pending if i["cost_hi"] > 0]
     deducts = [i for i in pending if i["cost_lo"] < 0]
     running = estimate + accepted
-    contingency = sum(c["amount"] for c in inputs["contingencies"])
+    held = contingency_held(inputs.get("contingency_report"), ms_id)
+    if held is not None and held["contingencies"]:
+        lines = [{"name": l["name"], "amount": l["remaining"], "starting": l["starting"], "accepted": l["accepted"],
+                  "pending": l["pending"], "is_owner_cost": l["is_owner_cost"]} for l in held["contingencies"]]
+        contingency = sum(l["remaining"] for l in held["contingencies"])
+        starting = sum(l["starting"] for l in held["contingencies"])
+        drawn = sum(l["accepted"] for l in held["contingencies"])
+        source = "remaining"
+        allowances = sum(l["remaining"] for l in held["allowances"])
+    else:
+        lines = inputs["contingencies"]
+        contingency = starting = sum(c["amount"] for c in lines)
+        drawn = 0.0
+        source = "starting" if lines else "none"
+        allowances = sum(a["amount"] for a in inputs["allowances"])
     return {
         "estimate": estimate, "accepted_changes": accepted, "running_total": running,
         "budget": budget, "gap": (budget - running) if budget else None,
         "pending_adds": sum(i["cost_hi"] for i in adds), "pending_adds_count": len(adds),
         "pending_deducts": sum(i["cost_lo"] for i in deducts), "pending_deducts_count": len(deducts),
         "pending_count": len(pending),
-        "contingency": contingency, "contingency_lines": inputs["contingencies"],
-        "allowances": sum(a["amount"] for a in inputs["allowances"]),
+        "pending_draws": -sum(i.get("draw", 0.0) for i in pending),   # gross-up carried in pending items, positive
+        "contingency": contingency, "contingency_lines": lines,
+        "contingency_source": source, "contingency_starting": starting, "contingency_drawn": drawn,
+        "allowances": allowances,
         "milestone_id": ms_id,
     }
 
@@ -240,10 +413,16 @@ def readiness(inputs):
     out = {
         "contingency": {
             "ok": cs["contingency"] > 0,
-            "amount": cs["contingency"], "lines": cs["contingency_lines"],
-            "message": ("Contingency held: " + ", ".join(f"{c['name']} {money(c['amount'])}" for c in cs["contingency_lines"])
+            "amount": cs["contingency"], "lines": cs["contingency_lines"], "source": cs["contingency_source"],
+            "message": ((f"Contingency remaining {money(cs['contingency'])} of {money(cs['contingency_starting'])} starting "
+                         f"({money(cs['contingency_drawn'], True)} accepted draws): "
+                         + ", ".join(f"{c['name']} {money(c['amount'])}" for c in cs["contingency_lines"])
+                         + (f". Pending items draw {money(cs['pending_draws'])} more; they are carried at gross cost." if cs["pending_draws"] else ""))
+                        if cs["contingency"] > 0 and cs["contingency_source"] == "remaining" else
+                        ("Contingency held (starting amounts from the milestone estimate; get-contingency-report was not saved, "
+                         "so accepted draws are not netted off): " + ", ".join(f"{c['name']} {money(c['amount'])}" for c in cs["contingency_lines"]))
                         if cs["contingency"] > 0 else
-                        "No contingency lines in the active milestone estimate. Contingencies are milestone markups with "
+                        "No contingency in the active milestone estimate. Contingencies are milestone markups with "
                         f"display type Contingency — see {SUCCESS_HUB['contingency']}. Ask for the amount held and record it "
                         "as an assumption (assumptions.contingency_override), or stop until it is entered in Join."),
         },
@@ -260,8 +439,8 @@ def readiness(inputs):
             "message": (("All open risks carry a Cost Impact." if risks else "No risks to check.")
                         if not costless else
                         f"{len(costless)} of {len(risks)} open risks have no Cost Impact in Join. The default assumes a "
-                        "cost from the Impact score as a % of Running Total (0.1 / 0.5 / 1 / 2.5 / 5 %); show the user the "
-                        "resulting dollars and let them set a ROM per risk or exclude it."),
+                        f"cost from the Impact score as a % of {T('RUNNING_TOTAL')} (0.1 / 0.5 / 1 / 2.5 / 5 %); show the user the "
+                        "resulting figures and let them set a ROM per risk or exclude it."),
         },
         "pending_items": {
             "ok": cs["pending_count"] > 0, "count": cs["pending_count"],
@@ -292,9 +471,11 @@ def candidates(inputs, n=10, assumptions=None):
 def candidates_markdown(inputs, n=10, assumptions=None):
     c = candidates(inputs, n, assumptions)
     L = ["**Largest pending adds** (number · name · Cost Impact)", ""]
-    L += [f"- #{i['number']} {i['name']} — {money(i['cost_hi'], True)}" + (" (range)" if i["is_range"] else "") for i in c["adds"]] or ["- none"]
+    def _tag(i):
+        return (" (range)" if i["is_range"] else "") + (f" (gross; draws {money(-i['draw'])} from contingency)" if i.get("draw") else "")
+    L += [f"- #{i['number']} {i['name']} — {money(i['cost_hi'], True)}{_tag(i)}" for i in c["adds"]] or ["- none"]
     L += ["", "**Largest pending deducts**", ""]
-    L += [f"- #{i['number']} {i['name']} — {money(i['cost_lo'], True)}" + (" (range)" if i["is_range"] else "") for i in c["deducts"]] or ["- none"]
+    L += [f"- #{i['number']} {i['name']} — {money(i['cost_lo'], True)}{_tag(i)}" for i in c["deducts"]] or ["- none"]
     L += ["", "**Open risks** (number · name · Likelihood · Impact · Cost Impact → probability · expected)", ""]
     for r in c["risks"]:
         cost = money(r["assumed_cost"]) if r["assumed_cost"] else "—"
@@ -408,7 +589,8 @@ def build_model(inputs, assumptions):
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "project": {k: inputs["project"].get(k) for k in ("id", "name", "type", "url", "projectLeadName")},
+        "project": {k: inputs["project"].get(k) for k in ("id", "name", "type", "url", "projectLeadName", "currency")},
+        "currency": CURRENCY["code"], "terms": dict(TERMS),
         "milestone": inputs.get("milestone"),
         "assumptions": a,
         "cost_summary": cs,
@@ -515,13 +697,13 @@ def main():
         sys.exit(2)
     a = json.loads(Path(sys.argv[1]).read_text())
     workdir = a.get("workdir") or Path(sys.argv[1]).parent
-    inputs = load_inputs(workdir)
+    inputs = load_inputs(workdir, a.get("project_id"))
     model = build_model(inputs, a)
     Path(sys.argv[2]).write_text(json.dumps(model, indent=1, default=str))
     wf, mc, cs = model["waterfall"], model["monte_carlo"], model["cost_summary"]
-    print(f"Running Total {money(cs['running_total'])} · contingency {money(cs['contingency'])} · budget {money(cs['budget']) if cs['budget'] else '—'}")
+    print(f"{T('RUNNING_TOTAL')} {money(cs['running_total'])} · contingency {money(cs['contingency'])} ({cs['contingency_source']}) · {T('TARGET')} {money(cs['budget']) if cs['budget'] else '—'}")
     print(f"Projected {money(wf['projected'])} (Δ {money(wf['delta'], True)}) · headroom {money(wf['headroom'], True)}")
-    print(f"MC: P50 {money(mc['percentiles'][50])} · P80 {money(mc['percentiles'][80])} · P(≤ Running Total) {mc['p_within_contingency']:.0f}%")
+    print(f"MC: P50 {money(mc['percentiles'][50])} · P80 {money(mc['percentiles'][80])} · P(≤ {T('RUNNING_TOTAL')}) {mc['p_within_contingency']:.0f}%")
     print(f"wrote {sys.argv[2]}")
 
 

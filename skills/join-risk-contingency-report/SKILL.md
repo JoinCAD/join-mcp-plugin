@@ -35,19 +35,28 @@ guide; `references/join-design.md` has Join's colors, type and terminology.
 ## 1. Project and scope
 
 Find the project with `list-my-projects` or `search-projects`; if several
-match, confirm before pulling anything. Ask nothing else yet — the useful
-questions depend on what the data shows.
+match, confirm before pulling anything. Then fetch
+`terminology-for-project` right away: a project can rename Estimate,
+Budget, Running Total, Gap and the other cost concepts, and from this point
+on you should use its words — in your questions, in the report, in the
+delivery. A team whose Join says "Target Value" will not recognise a
+"Budget". Ask nothing else yet — the useful questions depend on what the
+data shows.
 
 ## 2. Gather
 
-Follow `references/data-gathering.md` exactly: `project.json`, `costs.json`,
-`milestones.json`, `report.json` (the detailed milestone report in
-**SEPARATED_MARKUPS** mode — the only mode in which contingency lines are
-visible), every page of `items-1.json…` (filtered to PENDING and ACCEPTED —
-the only statuses the model uses, which keeps a big project to a page or
-two), and both risk registers. Save the raw tool output verbatim, copying
-spilled results rather than re-fetching; `risk_model.load_inputs("work")`
-reads those files.
+Follow `references/data-gathering.md` exactly: `project.json`,
+`terms.json`, `costs.json`, `milestones.json`, `contingency.json` (the
+Contingency & Allowance Report for the active milestone — starting, pending,
+accepted and remaining per contingency, with the item draws), `report.json`
+(the detailed milestone report in **SEPARATED_MARKUPS** mode — the fallback
+for contingency when the contingency report is refused, and the source of
+the Budget lines), every page of `items-1.json…` (filtered to PENDING and
+ACCEPTED — the only statuses the model uses, which keeps a big project to a
+page or two), and both risk registers. Save the raw tool output verbatim,
+copying spilled results rather than re-fetching;
+`risk_model.load_inputs("work")` reads those files, sets the currency from
+the project record and installs the terminology.
 
 Then, in Python:
 
@@ -55,23 +64,36 @@ Then, in Python:
 import sys; sys.path.insert(0, "<skill>/scripts")
 from risk_model import *
 inputs = load_inputs("work")
-cs = cost_summary(inputs)      # Estimate, Accepted Changes, Running Total, Budget, Pending Adds/Deducts, contingency
+cs = cost_summary(inputs)      # Estimate, Accepted Changes, Running Total, Budget, Pending Adds/Deducts, contingency remaining
 ready = readiness(inputs)      # the three gates below, with messages you can relay
 print(candidates_markdown(inputs))   # top pending adds/deducts and risks by expected cost — for step 4
+print(renamed_terms(), T("TARGET"))  # the project's labels; use them when you write to the user
 ```
 
-Sanity-check `cs["running_total"]` against the Running Total the user sees
-in Join before going further. If it differs, an option or draft is being
-counted differently — say so and fix it rather than carry a wrong base.
+Money is in whole units of the project's currency throughout (the connector
+returns decimal strings like `"1495000.00"`; nothing is in cents, nothing is
+divided by 100) and `money()` prints the project's symbol. Sanity-check
+`cs["running_total"]` against the Running Total the user sees in Join
+before going further. If it differs, an option or draft is being counted
+differently — say so and fix it rather than carry a wrong base. Check
+`cs["contingency"]` against the *remaining* column of the Contingency &
+Allowance Report the same way.
 
 ## 3. Readiness gates
 
 The report is only as honest as the register behind it, so three checks come
 before any assumptions:
 
-**Contingency.** `ready["contingency"]["ok"]` is False when the active
-milestone estimate has no markup line with display type Contingency. Tell the
-user exactly that, link the Success Hub page
+**Contingency.** The model uses the contingency **remaining** on the active
+milestone — starting amount less the draws already accepted — from
+`get-contingency-report`; `ready["contingency"]["message"]` spells out the
+subtraction and any pending draws, which are carried inside the pending
+items at gross cost (see `data-gathering.md`). If that report was refused
+for the user's role, the fallback is the starting amount from the
+SEPARATED_MARKUPS milestone report, and the delivery should say draws are
+not netted off. `ready["contingency"]["ok"]` is False when the active
+milestone carries no contingency at all. Tell the user exactly that, link
+the Success Hub page
 (https://success.join.build/en/knowledge/markups-in-milestones — contingencies
 are markups added in the milestone estimate's *Milestone Markups,
 Contingencies, and Allowances* section with display type **Contingency**),
@@ -93,7 +115,7 @@ items only and says so on page 1.
 
 **Cost Impacts.** Risks without a Cost Impact in Join get an assumed cost
 from their Impact score — by default 0.1 / 0.5 / 1 / 2.5 / 5 % of the
-Running Total for Insignificant → Severe. Show the user the dollar this
+Running Total for Insignificant → Severe. Show the user the figure this
 produces for each such risk (`candidates_markdown` marks them *(assumed)*)
 and offer the alternatives: a ROM figure per risk (`{"cost": …}` in
 `assumptions.risks`), a fixed dollar ladder (`costless_risk_method: "fixed"`),
@@ -159,8 +181,10 @@ The pages, so you can describe them and spot a broken one:
 
 - **1 · Assumptions.** One line saying the page details the assumptions
   that drive the rest of the report, a link to the project in Join, and
-  three columns: *Base cost* (milestone, Running Total, contingency held,
-  Base Cost, Budget, open risks, pending adds, pending deducts), *Adjustments*
+  three columns: *Base cost* (milestone, Running Total, contingency
+  remaining with its starting amount and accepted draws, Base Cost, Budget,
+  open risks, pending adds, pending deducts, pending contingency draws),
+  *Adjustments*
   (pending items carried as decided, risks carried as decided, the user's
   reasons), *Assumed probabilities* (add / deduct acceptance, the risk
   probability by Likelihood, the Cost Impact ladder for risks without one).
@@ -182,17 +206,23 @@ The pages, so you can describe them and spot a broken one:
 
 What the pages must say, and how:
 
-- **Join's words.** Estimate, Accepted Changes, Running Total, Pending Adds /
-  Deducts, Budget, Gap, Cost Impact, Likelihood, Impact, Risk Score,
-  Contingency. Not "exposure" as a column name, not "swing", not "forecast".
-  The two report-specific terms — *Base Cost* (Running Total − contingency)
-  and *Projected* — are the Cost Risk Calculator's own.
-- **Base Cost backs contingency out.** The contingency lines are inside the
-  Estimate, so Base Cost = Running Total − contingency and the Running Total
-  line is where contingency runs out. The app's dashboard stacks contingency
-  on top of the Running Total instead; page 1's Base cost column shows the
-  subtraction so nobody is surprised that the base chip differs from the
-  dashboard by the contingency amount.
+- **Join's words — this project's version of them.** Estimate, Accepted
+  Changes, Running Total, Pending Adds / Deducts, Budget, Gap, Cost Impact,
+  Likelihood, Impact, Risk Score, Contingency. Where the project has renamed
+  a concept (`terms.json`), the renamed label is the word: the builder reads
+  the terminology from `model.json` and prints "Target Budget" where the
+  project says so; write your delivery the same way, and use
+  `terminology_note()` once so the reader knows why the report says
+  "Baseline Estimate". Not "exposure" as a column name, not "swing", not
+  "forecast". The two report-specific terms — *Base Cost* (Running Total −
+  contingency) and *Projected* — are the Cost Risk Calculator's own.
+- **Base Cost backs the remaining contingency out.** The contingency lines
+  are inside the Estimate, so Base Cost = Running Total − contingency
+  remaining, and the Running Total line is where contingency runs out. The
+  app's dashboard stacks contingency on top of the Running Total instead;
+  page 1's Base cost column shows the subtraction, with the starting amount
+  and accepted draws beside it, so nobody is surprised that the base chip
+  differs from the dashboard by the contingency amount.
 - **Facts, not verdicts, and no editorializing.** "Projected exceeds the
   Running Total by $2.5M" and "the contingency held covers 18% of trials"
   are facts the page states; the Contingency block's two fixed sentences are
@@ -220,7 +250,9 @@ assumption set — that is the normal next step in the meeting, and the build
 takes seconds.
 
 Close with the data ask when it applies: risks without a Cost Impact, an
-empty register, no contingency lines, pending items with no cost. Say which
+empty register, no contingency lines, pending items with no cost, or a
+contingency report the user's role could not open (so the analysis ran on
+starting amounts). Say which
 is missing and that entering it in Join (Risks page: Likelihood, Impact and
 a ROM Cost Impact; milestone estimate: contingency markups) replaces the
 assumed figures with Join data on the next run. Offer to create the risks
@@ -228,10 +260,10 @@ from a list if they give you one.
 
 ## Files
 
-- `scripts/risk_model.py` — loaders, cost summary, readiness gates, candidate lists, assumptions, the ported waterfall and the Monte Carlo; CLI `assumptions.json → model.json`.
+- `scripts/risk_model.py` — loaders (currency + terminology from the saved files), contingency report, cost summary, readiness gates, candidate lists, assumptions, the ported waterfall and the Monte Carlo; CLI `assumptions.json → model.json`.
 - `scripts/build_report.py` — `model.json → report.html`: three Letter-landscape pages plus the risks appendix, waterfall / histogram / cumulative SVGs drawn to match the app's Cost Risk Calculator, logo inlined.
 - `scripts/render_pdf.py` — HTML → PDF via Playwright's Chromium; fails on overflow or wrong page count; writes page previews.
 - `assets/template.html` — the page layout in Join's light theme; `assets/join-logo.svg` the Join mark.
 - `references/model.md` — definitions, formulas, defaults, the `assumptions.json` shape.
-- `references/data-gathering.md` — tool-by-tool guide, units, where each number comes from, Success Hub links.
+- `references/data-gathering.md` — tool-by-tool guide, units and currency, terminology, where each number comes from (contingency remaining, draws), Success Hub links.
 - `references/join-design.md` — Join's colors, type scale and terminology.

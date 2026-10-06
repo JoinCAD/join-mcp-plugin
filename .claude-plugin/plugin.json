@@ -1,7 +1,7 @@
 {
   "name": "join",
   "displayName": "Join",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Join (https://join.build) aligns owners, design teams, and contractors within a unified system of record for preconstruction and the design phase. By integrating real-time cost and schedule data with design evolution, Join provides the decision intelligence necessary to manage risk on complex projects and ensure predictable project delivery at scale.\n\nThis plugin bundles the Join MCP server, which allows you to interact with your project- and company-level Join data from Claude, with skills for working with Join project data and producing custom reports.",
   "author": {
     "name": "Join",
@@ -22,6 +22,8 @@
     "budget",
     "risk",
     "report",
-    "contingency"
+    "contingency",
+    "meetings",
+    "transcript"
   ]
 }

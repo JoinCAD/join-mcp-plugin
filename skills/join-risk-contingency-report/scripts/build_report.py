@@ -12,10 +12,14 @@ Pages: 1 Assumptions (base cost · adjustments · assumed probabilities),
 The output is one HTML file (the Join mark inlined; Red Hat Text loads from
 Google Fonts) laid out for US Letter landscape, one section per page; render it
 with render_pdf.py. The waterfall reproduces the app's Cost Risk Calculator
-chart (komodo-ui DashboardCharts/CostRiskCalculator): blue base, yellow
+chart in the Join web app: blue base, yellow
 pending adds/deducts, orange risks, hatched full exposure over solid expected
 value, the black "snake" to the Projected chip, and dashed Budget / Running
 Total reference lines with labels on the right.
+
+Labels follow the project's terminology (model.json `terms`, from
+terminology-for-project) and money prints in the project's currency
+(model.json `currency`); both are installed by normalize().
 """
 import html
 import json
@@ -25,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from risk_model import money, LIKELIHOOD_LABELS, IMPACT_LABELS, SCENARIO_LABELS, RISK_SCENARIOS  # noqa: E402
+from risk_model import money, T, set_terms, set_currency, CURRENCY, LIKELIHOOD_LABELS, IMPACT_LABELS, SCENARIO_LABELS, RISK_SCENARIOS  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE.parent / "assets"
@@ -95,6 +99,16 @@ def chip_svg(x, y, label, placement="top", bg=None, fg=None, size=12):
     return (f'<g>{rect}<text x="{x:.1f}" y="{ty + h/2:.1f}" text-anchor="middle" dominant-baseline="central" '
             f'font-size="{size}" font-weight="500" fill="{fg}">{esc(label)}</text></g>')
 
+def cost_axis_label():
+    """'Cost in USD $' / 'Cost in GBP £' — the project's currency."""
+    sym = CURRENCY["symbol"].strip()
+    return f"Cost in {CURRENCY['code']}" + (f" {sym}" if sym and sym != CURRENCY["code"] else "")
+
+
+def outcome_axis_label():
+    sym = CURRENCY["symbol"].strip()
+    return f"Outcome (Project cost, {CURRENCY['code']}" + (f" {sym}" if sym and sym != CURRENCY["code"] else "") + ")"
+
 # ------------------------------------------------------------ waterfall svg
 
 def waterfall_svg(model, width=860, height=600):
@@ -105,8 +119,8 @@ def waterfall_svg(model, width=860, height=600):
     labels = {"base": "Base Cost", "adds": "Exp. Adds", "deducts": "Exp. Deducts", "risks": "Exp. Risks", "projected": "Projected"}
     lines = []
     if wf.get("budget"):
-        lines.append(("budget", wf["budget"], "Budget", C["budget"], "10 4"))
-    lines.append(("runningTotal", wf["running_total"], "Running Total", C["primary"], "6 3"))
+        lines.append(("budget", wf["budget"], T("TARGET"), C["budget"], "10 4"))
+    lines.append(("runningTotal", wf["running_total"], T("RUNNING_TOTAL"), C["primary"], "6 3"))
 
     # y domain, as chartScale.ts
     base_v = bars[0]["expected"]
@@ -146,7 +160,7 @@ def waterfall_svg(model, width=860, height=600):
         out.append(f'<text x="{ml - 10}" y="{yy:.1f}" text-anchor="end" dominant-baseline="central" font-size="12" fill="{C["secondary"]}">{si(t)}</text>')
     out.append(f'<line x1="{ml}" x2="{ml}" y1="{mt}" y2="{mt + ih}" stroke="{C["border"]}"/>')
     out.append(f'<line x1="{ml}" x2="{ml + iw}" y1="{mt + ih}" y2="{mt + ih}" stroke="{C["border"]}"/>')
-    out.append(f'<text transform="translate(16 {mt + ih/2:.1f}) rotate(-90)" text-anchor="middle" font-size="12" fill="{C["secondary"]}">Cost in USD $</text>')
+    out.append(f'<text transform="translate(16 {mt + ih/2:.1f}) rotate(-90)" text-anchor="middle" font-size="12" fill="{C["secondary"]}">{esc(cost_axis_label())}</text>')
 
     # reference lines; labels (two 11px lines each) are pushed apart when two lines sit within 30px
     ordered = sorted(lines, key=lambda l: y(l[1]))
@@ -255,9 +269,9 @@ def histogram_svg(model, width=620, height=300):
     iw, ih = width - ml - mr, height - mt - mb
     hist = mc["histogram"]
     xlo, xhi = hist[0]["lo"], hist[-1]["hi"]
-    refs = [("Base Cost", mc["base"], C["primary"], "2 3"), ("Running Total", cs["running_total"], C["primary"], "6 3")]
+    refs = [("Base Cost", mc["base"], C["primary"], "2 3"), (T("RUNNING_TOTAL"), cs["running_total"], C["primary"], "6 3")]
     if cs.get("budget"):
-        refs.append(("Budget", cs["budget"], C["budget"], "10 4"))
+        refs.append((T("TARGET"), cs["budget"], C["budget"], "10 4"))
     refs += [("P50", mc["percentiles"][50], C["muted"], ""), ("P80", mc["percentiles"][80], C["muted"], "")]
     xlo = min(xlo, min(v for _, v, *_ in refs)); xhi = max(xhi, max(v for _, v, *_ in refs))
     pad = (xhi - xlo) * 0.03
@@ -299,7 +313,7 @@ def histogram_svg(model, width=620, height=300):
         lx = labels[i][0]
         out.append(f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="{color}" '
                    f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(name)} {esc(money(v))}</text>')
-    out.append(f'<text x="{ml + iw/2:.1f}" y="{height - 6}" text-anchor="middle" font-size="11" fill="{C["secondary"]}">Outcome (Project cost, USD $)</text>')
+    out.append(f'<text x="{ml + iw/2:.1f}" y="{height - 6}" text-anchor="middle" font-size="11" fill="{C["secondary"]}">{esc(outcome_axis_label())}</text>')
     out.append(f'<text transform="translate(12 {mt + ih/2:.1f}) rotate(-90)" text-anchor="middle" font-size="11" fill="{C["secondary"]}">Share of trials</text>')
     out.append("</svg>")
     return "\n".join(out)
@@ -311,9 +325,9 @@ def cdf_svg(model, width=420, height=300):
     iw, ih = width - ml - mr, height - mt - mb
     cdf = mc["cdf"]
     xlo, xhi = cdf[0]["x"], cdf[-1]["x"]
-    marks = [("Running Total", cs["running_total"], C["primary"], mc["p_within_contingency"])]
+    marks = [(T("RUNNING_TOTAL"), cs["running_total"], C["primary"], mc["p_within_contingency"])]
     if cs.get("budget") and mc.get("p_within_budget") is not None:
-        marks.append(("Budget", cs["budget"], C["budget"], mc["p_within_budget"]))
+        marks.append((T("TARGET"), cs["budget"], C["budget"], mc["p_within_budget"]))
     xlo = min(xlo, min(v for _, v, *_ in marks)); xhi = max(xhi, max(v for _, v, *_ in marks))
     pad = (xhi - xlo) * 0.03
     xlo, xhi = xlo - pad, xhi + pad
@@ -351,7 +365,7 @@ def cdf_svg(model, width=420, height=300):
         lx = labels[i][0]
         out.append(f'<text x="{lx:.1f}" y="{ly - 12:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="{color}" {halo}>{esc(name)} {esc(money(v))}</text>')
         out.append(f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" font-size="11" fill="{color}" {halo}>{sub}</text>')
-    out.append(f'<text x="{ml + iw/2:.1f}" y="{height - 6}" text-anchor="middle" font-size="11" fill="{C["secondary"]}">Outcome (Project cost, USD $)</text>')
+    out.append(f'<text x="{ml + iw/2:.1f}" y="{height - 6}" text-anchor="middle" font-size="11" fill="{C["secondary"]}">{esc(outcome_axis_label())}</text>')
     out.append(f'<text transform="translate(12 {mt + ih/2:.1f}) rotate(-90)" text-anchor="middle" font-size="11" fill="{C["secondary"]}">Cumulative share of trials</text>')
     out.append("</svg>")
     return "\n".join(out)
@@ -386,11 +400,18 @@ def _plain(c):
 
 
 def kv(pairs, total=None):
+    """Key/value list. A pair may carry a third element, a short muted note
+    rendered on its own line under the row, so long explanations never
+    squeeze the label column."""
     out = ['<div class="kv">']
-    for k, v in pairs:
-        out.append(f"<div>{k}</div><div>{v}</div>")
+    for row in pairs:
+        k, v = row[0], row[1]
+        note = row[2] if len(row) > 2 and row[2] else ""
+        out.append(f'<div class="k">{k}</div><div class="v">{v}</div>')
+        if note:
+            out.append(f'<div class="note">{note}</div>')
     if total:
-        out.append(f'<div class="total">{total[0]}</div><div class="total">{total[1]}</div>')
+        out.append(f'<div class="k total">{total[0]}</div><div class="v total">{total[1]}</div>')
     out.append("</div>")
     return "".join(out)
 
@@ -487,23 +508,32 @@ def page_assumptions(model):
     ms = model.get("milestone") or {}
     url = model["project"].get("url") or ""
     open_link = f'<a class="sec-link" href="{esc(url)}">Open project in Join →</a>' if url else ""
-    head = (f'<div class="sec-head"><div><h2>Assumptions</h2><div class="sec-sub">This page details the assumptions that drive the rest of the report.</div></div>'
+    head = (f'<div class="sec-head"><div><h2>About this report</h2><div class="sec-sub">This report presents a probablistic analysis, forecasting project costs based on open risks and items, and comparing that to stated continegncy.</div><div><h2>Assumptions</h2><div class="sec-sub">This page details the assumptions that drive the rest of the report.</div></div>'
             f'{open_link}</div>')
 
     # column 1 — base cost
-    cont_note = " · supplied by you, not in Join" if cs.get("contingency_is_override") else ""
     scope = "project-level" if not a["include_company_risks"] else "project + company"
+    src = cs.get("contingency_source", "starting")
+    if cs.get("contingency_is_override"):
+        cont_label, cont_note = "− Contingency held", "Supplied by you, not in Join"
+    elif src == "remaining":
+        cont_label = "− Contingency remaining"
+        cont_note = f'{money(cs["contingency_starting"])} starting, {money(cs["contingency_drawn"], signed=True)} accepted draws'
+    else:
+        cont_label, cont_note = "− Contingency held", "Starting amount in the milestone estimate; draws not netted off"
     base_kv = kv([
         ("Milestone", esc(ms.get("name", "active")) + (f' · {esc(ms.get("date", "")[:10])}' if ms.get("date") else "")),
-        ("Running Total", money(cs["running_total"])),
-        ("− Contingency held", money(cs["contingency"]) + esc(cont_note)),
+        (T("RUNNING_TOTAL"), money(cs["running_total"])),
+        (cont_label, money(cs["contingency"]), esc(cont_note)),
     ], total=("= Base Cost", money(wf["base"]["expected"])))
+    draws_note = ([("Pending contingency draws", money(cs["pending_draws"]), "Carried in the pending items at gross cost")]
+                  if cs.get("pending_draws") else [])
     counts_kv = kv([
-        ("Budget", money(cs["budget"]) if cs["budget"] else "none"),
+        (T("TARGET"), money(cs["budget"]) if cs["budget"] else "none"),
         ("Open risks", f'{len(risks)} · {scope}'),
         ("Pending adds", f'{cs["pending_adds_count"]} items · {money(cs["pending_adds"], signed=True)}'),
         ("Pending deducts", f'{cs["pending_deducts_count"]} items · {money(cs["pending_deducts"], signed=True)}'),
-    ] + ([("Allowances in the estimate", money(cs["allowances"]) + " · not modeled")] if cs["allowances"] else []))
+    ] + draws_note + ([("Allowances in the estimate", money(cs["allowances"]), "Not modeled")] if cs["allowances"] else []))
     b_base = f'<div class="block"><h3>Base cost</h3>{base_kv}<div style="height:3mm"></div>{counts_kv}</div>'
 
     # column 2 — adjustments
@@ -530,8 +560,8 @@ def page_assumptions(model):
     method = a["costless_risk_method"]
     costless = [r for r in risks if r["cost_source"] == "assumed"]
     if method == "pct_of_running_total":
-        cl_rows = [[f"{I} · {IMPACT_LABELS[I]}", f"{a['impact_pct'][I]:g}% of Running Total", money(cs['running_total'] * a['impact_pct'][I] / 100)] for I in (1, 2, 3, 4, 5)]
-        cl_head, cl_widths = ["Impact", "", "Cost Impact"], ["36%", "40%", "24%"]
+        cl_rows = [[f"{I} · {IMPACT_LABELS[I]}", f"{a['impact_pct'][I]:g}% of {T('RUNNING_TOTAL')}", money(cs['running_total'] * a['impact_pct'][I] / 100)] for I in (1, 2, 3, 4, 5)]
+        cl_head, cl_widths = ["Impact", "", "Cost Impact"], ["30%", "48%", "22%"]
     elif method == "fixed":
         cl_rows = [[f"{I} · {IMPACT_LABELS[I]}", "", money(a['impact_dollars'][I])] for I in (1, 2, 3, 4, 5)]
         cl_head, cl_widths = ["Impact", "", "Cost Impact"], ["50%", "20%", "30%"]
@@ -559,7 +589,7 @@ def page_waterfall(model):
     deds = wf["deducts"]["expected"] - wf["deducts"]["baseline"]
     rsk = wf["risks"]["expected"] - wf["risks"]["baseline"]
     rows = [
-        ("", "Base Cost", f"Running Total {money(wf['running_total'])} − contingency {money(wf['contingency'])}", money(wf["base"]["expected"])),
+        ("", "Base Cost", f"{T('RUNNING_TOTAL')} {money(wf['running_total'])} − contingency {money(wf['contingency'])}", money(wf["base"]["expected"])),
         ("+", "Expected Adds", f"Pending Adds {money(cs['pending_adds'], signed=True)} × {a['adds_pct']:g}%{add_txt}", money(adds, signed=True)),
         ("−", "Expected Deducts", f"Pending Deducts {money(cs['pending_deducts'], signed=True)} × {a['deducts_pct']:g}%{ded_txt}", money(deds, signed=True)),
         ("+", "Expected Risks", f"Cost Impact × probability, {len(live_risks)} open risks", money(rsk, signed=True)),
@@ -580,8 +610,8 @@ def page_waterfall(model):
               '<span><i style="background:#4B71A9"></i>Base Cost</span>'
               '<span><i style="background:#F6B901"></i>Pending adds / deducts × probability</span>'
               '<span><i style="background:#F49144"></i>Risks × probability</span>'
-              '<span><i class="line"></i>Running Total</span>'
-              '<span><i class="line budget"></i>Budget</span></div>')
+              f'<span><i class="line"></i>{esc(T("RUNNING_TOTAL"))}</span>'
+              f'<span><i class="line budget"></i>{esc(T("TARGET"))}</span></div>')
     body = (f'<div class="sec-head"><div><h2>Expected outcome</h2><div class="sec-sub">Each bar walks the Base Cost up by the expected value of pending items and risks under the assumptions on page 1.</div></div></div>'
             f'<div class="cols chart"><div class="col"><div class="fill">{waterfall_svg(model)}</div>{legend}</div>'
             f'<div class="col"><div class="block"><h3>Walk</h3>{"".join(walk)}</div>{cont}</div></div>')
@@ -602,31 +632,35 @@ def page_montecarlo(model):
             rows.append([f"P{p}", money(P[p]), "—", "—"])
     stats = table(["Confidence", "Outcome", "Additional contingency needed", "Total contingency"], rows, num_cols=(1, 2, 3), widths=["18%", "22%", "32%", "28%"])
     draws = 100 - mc["p_within_base"]
-    budget_finding = (f'<div class="finding"><div class="value">{mc["p_within_budget"]:.0f}%</div><div class="text"><b>of trials stay within Budget</b> ({money(cs["budget"])})</div></div>'
+    budget_finding = (f'<div class="finding"><div class="value">{mc["p_within_budget"]:.0f}%</div><div class="text"><b>of trials stay within {esc(T("TARGET"))}</b> ({money(cs["budget"])})</div></div>'
                       if mc.get("p_within_budget") is not None else "")
     findings = (f'<div class="findings">'
-                f'<div class="finding"><div class="value">{mc["p_within_contingency"]:.0f}%</div><div class="text"><b>of trials stay within the Running Total</b> — the contingency held ({money(held)}) covers the outcome</div></div>'
+                f'<div class="finding"><div class="value">{mc["p_within_contingency"]:.0f}%</div><div class="text"><b>of trials stay within the {esc(T("RUNNING_TOTAL"))}</b> — the contingency held ({money(held)}) covers the outcome</div></div>'
                 f'{budget_finding}'
                 f'<div class="finding"><div class="value">{draws:.0f}%</div><div class="text"><b>of trials draw on contingency</b> — outcome above Base Cost ({money(base)})</div></div>'
                 f'</div>')
     legend = ('<div class="legend">'
-              '<span><i style="background:#4B71A9"></i>Within Running Total</span>'
+              f'<span><i style="background:#4B71A9"></i>Within {esc(T("RUNNING_TOTAL"))}</span>'
               '<span><i style="background:#F49144"></i>Beyond contingency held</span>'
-              '<span><i class="line dotted"></i>Base Cost</span><span><i class="line"></i>Running Total</span><span><i class="line budget"></i>Budget</span></div>')
+              f'<span><i class="line dotted"></i>Base Cost</span><span><i class="line"></i>{esc(T("RUNNING_TOTAL"))}</span><span><i class="line budget"></i>{esc(T("TARGET"))}</span></div>')
     intro = ('A Monte Carlo simulation plays the project out thousands of times, each time deciding at random — with the probabilities on page 1 — '
              'which pending items are accepted and which risks occur, and records the resulting cost. The spread of those results is the range of outcomes. '
              '<a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Learn more →</a>')
     body = (f'<div class="sec-head"><div><h2>Range of outcomes</h2><div class="sec-sub">{intro}</div></div></div>'
             f'<div class="cols mc">'
             f'<div class="col"><h3>Distribution of outcomes</h3><div class="fill">{histogram_svg(model)}</div>{legend}'
-            f'<div class="block" style="margin-top:2mm"><h3>Outcome by confidence level</h3>{stats}<p class="chart-caption" style="margin-top:1.5mm">Additional contingency needed = outcome − Running Total {money(rt)}. Total contingency = the {money(held)} held plus the additional amount, as a % of Base Cost {money(base)}.</p></div></div>'
+            f'<div class="block" style="margin-top:2mm"><h3>Outcome by confidence level</h3>{stats}<p class="chart-caption" style="margin-top:1.5mm">Additional contingency needed = outcome − {esc(T("RUNNING_TOTAL"))} {money(rt)}. Total contingency = the {money(held)} held plus the additional amount, as a % of Base Cost {money(base)}.</p></div></div>'
             f'<div class="col">{findings}<h3 style="margin-top:2mm">Confidence curve</h3><div class="fill">{cdf_svg(model)}</div><p class="chart-caption">The share of trials whose outcome is at or below each cost.</p></div>'
             f'</div>')
     return body
 
 
 def normalize(model):
-    """JSON turns int keys into strings; put the numeric tables back."""
+    """JSON turns int keys into strings; put the numeric tables back. Also
+    installs the project's currency and terminology so every label and
+    figure on the pages comes out in the project's own words."""
+    set_currency(model.get("currency") or (model.get("project") or {}).get("currency"))
+    set_terms(model.get("terms"))
     mc = model["monte_carlo"]
     mc["percentiles"] = {int(k): v for k, v in mc["percentiles"].items()}
     for k in ("contingency_needed", "shortfall"):

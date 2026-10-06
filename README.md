@@ -7,7 +7,8 @@ provides the decision intelligence necessary to manage risk on complex projects
 and ensure predictable project delivery at scale.
 
 This plugin connects Claude and Codex to your project- and company-level Join
-data, and produces custom reports from it. It bundles two things:
+data, produces custom reports from it, and checks it against what was decided
+in your meetings. It bundles two things:
 
 - **The Join MCP server** (`https://api.join.build/mcp/join`). It lets the
   agent read and update the Join data your account can access: projects,
@@ -22,6 +23,8 @@ data, and produces custom reports from it. It bundles two things:
 |---|---|
 | [`join-a3-report`](skills/join-a3-report/SKILL.md) | Builds a one-page A3 executive snapshot of a Join project: an HTML report styled like the Join app that prints to a single A3 PDF, with links back into Join. |
 | [`join-risk-contingency-report`](skills/join-risk-contingency-report/SKILL.md) | Builds a Risk & Contingency Analysis of a Join project, answering "is the contingency we carry enough?": documented assumptions, a Cost Risk Calculator waterfall, a Monte Carlo range of outcomes, and an appendix of open risks. Prints to a Letter-landscape PDF. |
+| [`join-risk-register-gap-check`](skills/join-risk-register-gap-check/SKILL.md) | Checks a Join project's risk register for gaps: classifies each risk into 20 construction risk themes, compares the register with a well-populated one (50+ risks in the typical theme mix for its sector), flags themes that are missing or light, and offers to add three simple starter risks for each. |
+| [`join-meeting-sync`](skills/join-meeting-sync/SKILL.md) | Reconciles a meeting transcript or minutes (Teams, Zoom, Meet, Otter, notes) with a Join project: matches decisions to items, compares them with item history since the meeting started, asks about every difference, applies only confirmed updates with the meeting's context as comments, links to Join for changes it can't make, and drafts a summary that flags where Join differs from what was said. |
 
 ## Install
 
@@ -55,8 +58,9 @@ Join when prompted.
   tools (creating or updating items and risks, adding comments) change data
   in Join and run only when you or the agent call them.
 - **Skill scripts** in `skills/*/scripts/` are plain Python that run on your
-  machine. They read the tool results the agent saved locally and write
-  local files, such as `report.html` and `report.pdf`. The Python itself
+  machine. They read the tool results the agent saved locally (and, for
+  `join-meeting-sync`, the transcript file you give it) and write local
+  files, such as `report.html` and `report.pdf`. The Python itself
   makes no network requests. `check_fit.py` and `render_pdf.py` render PDFs
   with Playwright's headless Chromium, which fetches the report font (see
   below); if Chromium isn't installed, the agent may ask to run

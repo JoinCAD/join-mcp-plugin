@@ -113,9 +113,10 @@
   /* key/value lists for assumptions */
   .kv { display: grid; grid-template-columns: 1fr auto; font-size: 12px; line-height: 16px; }
   .kv > div { padding: 2px 0; border-bottom: 1px solid var(--border-separator); min-width: 0; }
-  .kv > div:nth-child(odd) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .kv > div:nth-child(even) { text-align: right; font-variant-numeric: lining-nums tabular-nums; padding-left: 8px; }
-  .kv > div.total { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
+  .kv > div.k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kv > div.v { text-align: right; font-variant-numeric: lining-nums tabular-nums; padding-left: 8px; white-space: nowrap; }
+  .kv > div.note { grid-column: 1 / -1; color: var(--type-muted); font-size: 11px; line-height: 14px; padding: 0 0 3px; margin-top: -2px; }
+  .kv > div.k.total, .kv > div.v.total { border-top: 1px solid var(--border-total); border-bottom: 0; font-weight: 700; }
   .empty { color: var(--type-muted); font-style: italic; }
 
   /* charts */
